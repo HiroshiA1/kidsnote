@@ -1,26 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* KidsNote Design System */
+  --background: #faeee7;
+  --headline: #33272a;
+  --paragraph: #594a4e;
+  --button: #ff8ba7;
+  --surface: #fffffe;
+  --secondary: #ffc6c7;
+  --tertiary: #c3f0ca;
+  --alert: #ff8b8b;
 }
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-headline: var(--headline);
+  --color-paragraph: var(--paragraph);
+  --color-button: var(--button);
+  --color-surface: var(--surface);
+  --color-secondary: var(--secondary);
+  --color-tertiary: var(--tertiary);
+  --color-alert: var(--alert);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--paragraph);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--headline);
 }
