@@ -1,4 +1,4 @@
-export type IntentType = 'growth' | 'incident' | 'handover' | 'child_update' | 'add_child' | 'add_staff';
+export type IntentType = 'growth' | 'incident' | 'handover' | 'child_update' | 'add_child' | 'add_staff' | 'rule_query';
 
 export interface GrowthData {
   child_names: string[];
@@ -43,9 +43,13 @@ export interface AddStaffData {
   notes?: string;
 }
 
+export interface RuleQueryData {
+  question: string;
+}
+
 export interface IntentResult {
   intent: IntentType;
-  data: GrowthData | IncidentData | HandoverData | ChildUpdateData | AddChildData | AddStaffData;
+  data: GrowthData | IncidentData | HandoverData | ChildUpdateData | AddChildData | AddStaffData | RuleQueryData;
   confidence?: number;
 }
 
@@ -55,6 +59,9 @@ export interface InputMessage {
   timestamp: Date;
   result?: IntentResult;
   status: 'pending' | 'processing' | 'confirmed' | 'saved';
+  visibility?: 'staff_only' | 'guardians_allowed';
   isMarkedForRecord?: boolean;
+  linkedChildIds?: string[];
   linkedToGrowthRecordId?: string;
+  ruleAnswer?: { answer: string; referencedRuleIds: string[] };
 }

@@ -1,3 +1,10 @@
+export interface Guardian {
+  name: string;
+  phone: string;
+  relationship: string;
+  email?: string;
+}
+
 export interface Child {
   id: string;
   firstName: string;          // 名（ひらがな）
@@ -15,6 +22,7 @@ export interface Child {
     phone: string;
     relationship: string;
   };
+  guardians?: Guardian[];
   photoUrl?: string;
   createdAt: Date;
   updatedAt: Date;

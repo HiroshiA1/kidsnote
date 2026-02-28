@@ -1,10 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { IntentResult, IntentType, GrowthData, AddChildData, AddStaffData } from '@/types/intent';
+import { IntentResult, IntentType, GrowthData, AddChildData, AddStaffData, RuleQueryData } from '@/types/intent';
+import { SAFETY_KEYWORDS } from './safetyKeywords';
+import { anonymizeText, deanonymizeResult, type AnonymizeResult, type ChildEntry } from './anonymize';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援AIです。
-保育士からの入力テキストを分析し、以下の6つのカテゴリのいずれかに分類してください。
+保育士からの入力テキストを分析し、以下の7つのカテゴリのいずれかに分類してください。
 
 ## 分類の優先順位（重要：この順番で判定してください）
 
@@ -21,17 +23,23 @@ const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援A
 - 「新しい先生」「新しい職員」
 - 「〜先生が来ました」「配属されました」
 
-### 3. incident（ヒヤリハット）
+### 3. rule_query（ルール質問）
+園のルール・規則・マニュアル・手順についての質問
+- 「ルール」「規則」「決まり」「対応方法」「マニュアル」「手順」等のキーワード
+- 「〜はどうすればいい？」「〜の時はどうする？」「〜の対応は？」等の質問形式
+- 「〜を教えて」「〜について知りたい」（ルール・手順に関するもの）
+
+### 4. incident（ヒヤリハット）
 怪我・事故・危険な出来事・ヒヤリとした場面
 
-### 4. child_update（園児情報更新）
+### 5. child_update（園児情報更新）
 既存園児のアレルギー情報の変更・特性の追加など
 ※「入園」を含まない、既存園児の情報更新のみ
 
-### 5. handover（申し送り）
+### 6. handover（申し送り）
 保護者からの連絡・職員間の伝達事項・お迎え変更など
 
-### 6. growth（成長記録）
+### 7. growth（成長記録）
 園児の成長・発達・できたこと・日常の様子
 ※上記のどれにも該当しない場合
 
@@ -55,6 +63,9 @@ const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援A
 
 職員追加の場合:
 {"intent":"add_staff","data":{"name":"職員名","role":"役職","class_name":"担当クラス","contact":"連絡先","notes":"備考"},"confidence":0.95}
+
+ルール質問の場合:
+{"intent":"rule_query","data":{"question":"質問内容"},"confidence":0.95}
 
 ## その他のルール
 - 園児名・職員名は「〜くん」「〜ちゃん」「〜さん」「〜先生」を除いた名前のみ抽出
@@ -158,6 +169,11 @@ function convertToIntent(text: string, intent: IntentType, originalResult: Inten
     return { intent: 'add_staff', data, confidence: 0.9 };
   }
 
+  if (intent === 'rule_query') {
+    const data: RuleQueryData = { question: text };
+    return { intent: 'rule_query', data, confidence: 0.9 };
+  }
+
   // その他の場合は元のデータを使用
   return { ...originalResult, intent };
 }
@@ -178,23 +194,52 @@ function preClassifyByKeyword(text: string): IntentType | null {
     return 'add_staff';
   }
 
-  // ヒヤリハットのキーワード
-  const incidentKeywords = ['怪我', 'けが', 'ケガ', '転んだ', '転倒', 'ぶつけ', '擦りむ', 'すりむ', 'ヒヤリ', '危な', '出血', '打撲'];
-  if (incidentKeywords.some(kw => text.includes(kw))) {
+  // ルール質問のキーワード
+  const ruleQueryKeywords = ['ルール', '規則', '決まり', '対応方法', 'マニュアル', '手順'];
+  const ruleQueryPatterns = [/どうすればいい/, /どうする？/, /の対応は/, /を教えて/, /について知りたい/];
+  if (ruleQueryKeywords.some(kw => text.includes(kw)) ||
+    ruleQueryPatterns.some(p => p.test(text))) {
+    return 'rule_query';
+  }
+
+  // ヒヤリハットのキーワード（共有辞書）
+  if (SAFETY_KEYWORDS.some(kw => text.includes(kw))) {
     return 'incident';
   }
 
   return null;
 }
 
-export async function classifyIntent(text: string): Promise<IntentResult> {
+/** 分類結果（園児紐付け情報を含む） */
+export interface ClassifyResult {
+  intent: IntentResult;
+  /** 匿名化時にテキスト内で検出された園児ID */
+  matchedChildIds: string[];
+}
+
+export async function classifyIntent(
+  text: string,
+  children: ChildEntry[] = [],
+  extraNames: string[] = [],
+): Promise<ClassifyResult> {
   // キーワードベースの事前判定
   const preClassified = preClassifyByKeyword(text);
+
+  // 匿名化: 園児名を仮名に置換してからAPIに送信 + 園児ID特定
+  let anonymization: AnonymizeResult = {
+    anonymizedText: text,
+    nameMap: new Map(),
+    matchedChildIds: [],
+  };
+  if (children.length > 0 || extraNames.length > 0) {
+    anonymization = anonymizeText(text, children, extraNames);
+  }
 
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
 
-    const result = await model.generateContent(CLASSIFICATION_PROMPT + text);
+    // 匿名化済みテキストをAPIに送信
+    const result = await model.generateContent(CLASSIFICATION_PROMPT + anonymization.anonymizedText);
     const response = result.response.text();
 
     // JSONを抽出（マークダウンのコードブロックがある場合も対応）
@@ -204,7 +249,12 @@ export async function classifyIntent(text: string): Promise<IntentResult> {
       jsonStr = jsonMatch[1].trim();
     }
 
-    const parsed = JSON.parse(jsonStr) as IntentResult;
+    let parsed = JSON.parse(jsonStr) as IntentResult;
+
+    // 匿名化された名前を元に戻す
+    if (anonymization.nameMap.size > 0) {
+      parsed = deanonymizeResult(parsed, anonymization.nameMap);
+    }
 
     // バリデーション
     if (!isValidIntent(parsed)) {
@@ -213,22 +263,29 @@ export async function classifyIntent(text: string): Promise<IntentResult> {
 
     // キーワード事前判定がある場合はintentを上書きし、データも変換
     if (preClassified && parsed.intent !== preClassified) {
-      console.log(`Intent overridden: ${parsed.intent} -> ${preClassified}`);
-      return convertToIntent(text, preClassified, parsed);
+      return {
+        intent: convertToIntent(text, preClassified, parsed),
+        matchedChildIds: anonymization.matchedChildIds,
+      };
     }
 
-    return parsed;
+    return {
+      intent: parsed,
+      matchedChildIds: anonymization.matchedChildIds,
+    };
   } catch (error) {
     console.error('Gemini API error:', error);
-    // フォールバック: 成長記録として返す
     return {
-      intent: preClassified || 'growth',
-      data: {
-        child_names: [],
-        summary: text,
-        tags: [],
-      } as GrowthData,
-      confidence: 0,
+      intent: {
+        intent: preClassified || 'growth',
+        data: {
+          child_names: [],
+          summary: text,
+          tags: [],
+        } as GrowthData,
+        confidence: 0,
+      },
+      matchedChildIds: anonymization.matchedChildIds,
     };
   }
 }
@@ -239,7 +296,7 @@ function isValidIntent(result: unknown): result is IntentResult {
   const r = result as Record<string, unknown>;
   if (!r.intent || !r.data) return false;
 
-  const validIntents: IntentType[] = ['growth', 'incident', 'handover', 'child_update', 'add_child', 'add_staff'];
+  const validIntents: IntentType[] = ['growth', 'incident', 'handover', 'child_update', 'add_child', 'add_staff', 'rule_query'];
   if (!validIntents.includes(r.intent as IntentType)) return false;
 
   return true;

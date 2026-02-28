@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/components/AppLayout';
-import { IntentCard } from '@/components/IntentCard';
-import { IntentType, InputMessage, GrowthData, IncidentData, HandoverData, ChildUpdateData } from '@/types/intent';
+import { InputMessage, GrowthData, IncidentData, HandoverData, ChildUpdateData } from '@/types/intent';
 import { sampleRecords } from '@/lib/sampleData';
+import { ChildLinks } from '@/components/ChildLink';
+import { getChildDisplayName } from '@/lib/childrenStore';
 
 const intentConfig: Record<string, { label: string; bgColor: string; borderColor: string; icon: string; cardBg: string; href: string }> = {
   growth: {
@@ -53,18 +54,18 @@ function isToday(date: Date): boolean {
   );
 }
 
-function getRecordSummary(message: InputMessage): string {
+function getRecordSummaryText(message: InputMessage): string {
   if (!message.result) return message.content;
   const { intent, data } = message.result;
   switch (intent) {
     case 'growth':
-      return `${(data as GrowthData).child_names.join('、')}: ${(data as GrowthData).summary}`;
+      return (data as GrowthData).summary;
     case 'incident':
-      return `${(data as IncidentData).child_name}: ${(data as IncidentData).description}`;
+      return (data as IncidentData).description;
     case 'handover':
       return (data as HandoverData).message;
     case 'child_update':
-      return `${(data as ChildUpdateData).child_name}: ${(data as ChildUpdateData).new_value}`;
+      return (data as ChildUpdateData).new_value;
     default:
       return message.content;
   }
@@ -125,7 +126,14 @@ function TodayRecordSection({
                   <span className="text-xs text-paragraph/50 whitespace-nowrap mt-0.5">
                     {formatTime(record.timestamp)}
                   </span>
-                  <p className="text-sm text-headline flex-1">{getRecordSummary(record)}</p>
+                  <div className="text-sm text-headline flex-1">
+                    {record.linkedChildIds && record.linkedChildIds.length > 0 && (
+                      <span className="font-medium mr-1">
+                        <ChildLinks childIds={record.linkedChildIds} />:
+                      </span>
+                    )}
+                    <span>{getRecordSummaryText(record)}</span>
+                  </div>
                   {record.result?.intent === 'incident' && (
                     <span className={`text-xs px-1.5 py-0.5 rounded ${
                       (record.result.data as IncidentData).severity === 'high'
@@ -168,9 +176,60 @@ function TodayRecordSection({
   );
 }
 
+/** ウェルカムモーダル */
+function WelcomeModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-surface rounded-2xl shadow-xl max-w-md w-full mx-4 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="w-12 h-12 bg-gradient-to-br from-button to-tertiary rounded-xl flex items-center justify-center text-white text-xl font-bold">
+            K
+          </span>
+          <div>
+            <h2 className="text-xl font-bold text-headline">KidsNote へようこそ</h2>
+            <p className="text-sm text-paragraph/60">保育業務をAIがサポートします</p>
+          </div>
+        </div>
+
+        <div className="space-y-4 mb-6">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">&#128172;</span>
+            <div>
+              <p className="font-medium text-headline text-sm">自然な言葉で入力</p>
+              <p className="text-xs text-paragraph/70">画面下の入力欄に日常の出来事を自由に入力してください。AIが自動で分類します。</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">&#127793;</span>
+            <div>
+              <p className="font-medium text-headline text-sm">自動分類</p>
+              <p className="text-xs text-paragraph/70">成長記録・ヒヤリハット・申し送りなどに自動で振り分けられます。</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">&#128203;</span>
+            <div>
+              <p className="font-medium text-headline text-sm">サンプル入力を試す</p>
+              <p className="text-xs text-paragraph/70">例: 「たろうくんが初めて自分で靴を履けました」</p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 bg-button text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+        >
+          はじめる
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const { messages, confirmMessage, editMessage, cancelMessage, markForRecord } = useApp();
+  const { messages } = useApp();
   const [today, setToday] = useState('');
+  const [showWelcome, setShowWelcome] = useState(false);
 
   useEffect(() => {
     setToday(new Date().toLocaleDateString('ja-JP', {
@@ -179,10 +238,11 @@ export default function Dashboard() {
       day: 'numeric',
       weekday: 'long'
     }));
+    // 初回アクセス判定
+    if (!localStorage.getItem('kidsnote_welcomed')) {
+      setShowWelcome(true);
+    }
   }, []);
-
-  // 新しい入力（processing/confirmed）
-  const pendingMessages = messages.filter(m => m.status === 'processing' || m.status === 'confirmed');
 
   // 保存済みデータ（新しい入力 + サンプル）
   const savedMessages = [...messages.filter(m => m.status === 'saved'), ...sampleRecords];
@@ -196,8 +256,18 @@ export default function Dashboard() {
 
   const todayTotal = todayRecords.length;
 
+  const incidentCount = recordsByType('incident').length;
+
   return (
     <div className="min-h-screen">
+      {/* ウェルカムモーダル */}
+      {showWelcome && (
+        <WelcomeModal onClose={() => {
+          setShowWelcome(false);
+          localStorage.setItem('kidsnote_welcomed', '1');
+        }} />
+      )}
+
       {/* ページヘッダー */}
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -207,51 +277,40 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-6 space-y-8">
-        {/* 新しい入力（確認待ち） */}
-        {pendingMessages.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-6 h-6 bg-button rounded-full flex items-center justify-center">
-                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-              </div>
-              <h2 className="text-lg font-bold text-headline">新しい入力</h2>
-              <span className="ml-auto text-sm text-white bg-button px-2 py-0.5 rounded-full">
-                {pendingMessages.length}件
-              </span>
+        {/* 日次安全確認 */}
+        <section>
+          <div className={`rounded-xl border p-4 flex items-center gap-4 ${
+            incidentCount > 0
+              ? 'border-alert/30 bg-alert/5'
+              : 'border-tertiary/30 bg-tertiary/5'
+          }`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+              incidentCount > 0 ? 'bg-alert/20' : 'bg-tertiary/20'
+            }`}>
+              <span className="text-xl">{incidentCount > 0 ? '\u26A0\uFE0F' : '\u2705'}</span>
             </div>
-            <div className="space-y-4">
-              {pendingMessages.map(message => (
-                <div key={message.id}>
-                  {message.status === 'processing' && (
-                    <div className="bg-surface rounded-lg p-4 shadow-sm animate-pulse">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-secondary/50 rounded-full" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 bg-secondary/50 rounded w-3/4" />
-                          <div className="h-3 bg-secondary/30 rounded w-1/2" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {message.status === 'confirmed' && message.result && (
-                    <IntentCard
-                      result={message.result}
-                      originalText={message.content}
-                      onConfirm={() => confirmMessage(message.id)}
-                      onEdit={(newIntent) => editMessage(message.id, newIntent)}
-                      onCancel={() => cancelMessage(message.id)}
-                      onLinkToGrowth={() => {}}
-                      onMarkForRecord={() => markForRecord(message.id)}
-                      isMarkedForRecord={message.isMarkedForRecord}
-                    />
-                  )}
-                </div>
-              ))}
+            <div className="flex-1">
+              <p className="font-medium text-headline text-sm">
+                {incidentCount > 0
+                  ? `本日のヒヤリハット: ${incidentCount}件`
+                  : '本日のヒヤリハット: 0件'}
+              </p>
+              <p className="text-xs text-paragraph/60">
+                {incidentCount > 0
+                  ? '内容を確認し、必要な対策を検討してください'
+                  : '本日は安全に関する報告はありません'}
+              </p>
             </div>
-          </section>
-        )}
+            {incidentCount > 0 && (
+              <Link
+                href="/records/incident"
+                className="text-sm text-alert hover:underline whitespace-nowrap"
+              >
+                詳細を確認
+              </Link>
+            )}
+          </div>
+        </section>
 
         {/* 本日の記録（タイプ別セクション） */}
         <section>

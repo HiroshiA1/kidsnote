@@ -4,6 +4,7 @@ import { useApp } from '@/components/AppLayout';
 import { IntentCard } from '@/components/IntentCard';
 import { ChildUpdateData } from '@/types/intent';
 import { sampleRecords } from '@/lib/sampleData';
+import { ChildLinks } from '@/components/ChildLink';
 
 export default function ChildUpdateRecordsPage() {
   const { messages, confirmMessage, editMessage, cancelMessage, markForRecord } = useApp();
@@ -84,7 +85,11 @@ export default function ChildUpdateRecordsPage() {
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <div className="font-medium text-headline">{data.child_name}</div>
+                      <div className="font-medium text-headline">
+                        {message.linkedChildIds && message.linkedChildIds.length > 0
+                          ? <ChildLinks childIds={message.linkedChildIds} />
+                          : data.child_name}
+                      </div>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs px-2 py-0.5 bg-button/20 rounded-full text-button">
                           {fieldLabels[data.field] || data.field}

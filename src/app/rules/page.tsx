@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useApp } from '@/components/AppLayout';
 import { Rule, RuleCategory, RuleChatMessage, ruleCategoryConfig } from '@/types/rule';
 import { askRulesAction } from '@/app/actions/rules-chat';
+import { ChildEntry } from '@/lib/anonymize';
 
 type Tab = 'manage' | 'chat';
 
@@ -257,7 +258,7 @@ function RuleManageTab() {
 
 // チャットタブ
 function RuleChatTab() {
-  const { rules, ruleChatMessages, addRuleChatMessage, clearRuleChat } = useApp();
+  const { rules, ruleChatMessages, addRuleChatMessage, clearRuleChat, children: childrenData, staff: staffData } = useApp();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -283,6 +284,26 @@ function RuleChatTab() {
 
     setIsLoading(true);
     try {
+      const collectChildEntries = (): ChildEntry[] =>
+        childrenData.map(c => ({
+          id: c.id,
+          names: [
+            c.firstName, c.lastName,
+            c.firstNameKanji, c.lastNameKanji,
+            `${c.lastName}${c.firstName}`.trim(),
+            `${c.lastNameKanji ?? ''}${c.firstNameKanji ?? ''}`.trim(),
+          ].filter((n): n is string => !!n && n.length >= 2),
+        }));
+
+      const collectExtraNames = (): string[] => {
+        const names: string[] = [];
+        for (const s of staffData) {
+          if (s.firstName && s.firstName.length >= 2) names.push(s.firstName);
+          if (s.lastName && s.lastName.length >= 2) names.push(s.lastName);
+        }
+        return [...new Set(names)];
+      };
+
       const rulesContext = rules.map(r => ({
         id: r.id,
         title: r.title,
@@ -290,7 +311,18 @@ function RuleChatTab() {
         category: r.category,
       }));
 
-      const result = await askRulesAction(question, rulesContext);
+      // 直近5往復の会話履歴を抽出
+      const recentHistory = ruleChatMessages
+        .slice(-10)
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+      const result = await askRulesAction(
+        question,
+        rulesContext,
+        recentHistory,
+        collectChildEntries(),
+        collectExtraNames()
+      );
 
       const assistantMessage: RuleChatMessage = {
         id: crypto.randomUUID(),
@@ -358,11 +390,10 @@ function RuleChatTab() {
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[80%] rounded-xl px-4 py-3 ${
-                msg.role === 'user'
-                  ? 'bg-button text-white'
-                  : 'bg-secondary/20 text-headline'
-              }`}
+              className={`max-w-[80%] rounded-xl px-4 py-3 ${msg.role === 'user'
+                ? 'bg-button text-white'
+                : 'bg-secondary/20 text-headline'
+                }`}
             >
               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
               {msg.role === 'assistant' && msg.referencedRuleIds && msg.referencedRuleIds.length > 0 && (
@@ -443,11 +474,10 @@ export default function RulesPage() {
         <div className="flex gap-1 mb-6 bg-secondary/10 p-1 rounded-xl w-fit">
           <button
             onClick={() => setActiveTab('manage')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === 'manage'
-                ? 'bg-surface text-headline shadow-sm'
-                : 'text-paragraph/60 hover:text-paragraph'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'manage'
+              ? 'bg-surface text-headline shadow-sm'
+              : 'text-paragraph/60 hover:text-paragraph'
+              }`}
           >
             <span className="flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -458,11 +488,10 @@ export default function RulesPage() {
           </button>
           <button
             onClick={() => setActiveTab('chat')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === 'chat'
-                ? 'bg-surface text-headline shadow-sm'
-                : 'text-paragraph/60 hover:text-paragraph'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'chat'
+              ? 'bg-surface text-headline shadow-sm'
+              : 'text-paragraph/60 hover:text-paragraph'
+              }`}
           >
             <span className="flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

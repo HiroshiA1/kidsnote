@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useApp, Staff } from '@/components/AppLayout';
 
 type EventStatus = 'planning' | 'preparation' | 'completed' | 'reviewed';
 type ViewMode = 'timeline' | 'list';
@@ -141,12 +142,159 @@ const priorityConfig: Record<string, { color: string; bgColor: string }> = {
   low: { color: 'text-paragraph/60', bgColor: 'bg-secondary/20' },
 };
 
+function TaskRow({
+  task,
+  staffList,
+  isEditing,
+  onToggle,
+  onEdit,
+  onUpdate,
+  onDelete,
+  onFinishEdit,
+}: {
+  task: EventTask;
+  staffList: Staff[];
+  isEditing: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onUpdate: (updates: Partial<EventTask>) => void;
+  onDelete: () => void;
+  onFinishEdit: () => void;
+}) {
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && titleRef.current) {
+      titleRef.current.focus();
+    }
+  }, [isEditing]);
+
+  if (isEditing) {
+    return (
+      <div className="p-3 bg-secondary/10 rounded-lg border-2 border-button/30 space-y-3">
+        <div className="flex items-center gap-3">
+          <input
+            ref={titleRef}
+            type="text"
+            value={task.title}
+            onChange={(e) => onUpdate({ title: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && task.title.trim()) onFinishEdit();
+            }}
+            placeholder="タスク名を入力"
+            className="flex-1 px-2 py-1 text-sm bg-white border border-secondary/40 rounded focus:outline-none focus:border-button"
+          />
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1">
+            <label className="text-xs text-paragraph/60">担当:</label>
+            <select
+              value={task.assignee}
+              onChange={(e) => onUpdate({ assignee: e.target.value })}
+              className="px-2 py-1 text-xs bg-white border border-secondary/40 rounded focus:outline-none focus:border-button"
+            >
+              <option value="未定">未定</option>
+              {staffList.map((s) => {
+                const name = `${s.lastName}${s.firstName}`;
+                return <option key={s.id} value={name}>{name}（{s.role}）</option>;
+              })}
+              <option value="全職員">全職員</option>
+              <option value="各担任">各担任</option>
+              <option value="事務">事務</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-1">
+            <label className="text-xs text-paragraph/60">期限:</label>
+            <input
+              type="date"
+              value={task.dueDate.toISOString().split('T')[0]}
+              onChange={(e) => {
+                if (e.target.value) onUpdate({ dueDate: new Date(e.target.value + 'T00:00:00') });
+              }}
+              className="px-2 py-1 text-xs bg-white border border-secondary/40 rounded focus:outline-none focus:border-button"
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <label className="text-xs text-paragraph/60">区分:</label>
+            <select
+              value={task.category}
+              onChange={(e) => onUpdate({ category: e.target.value as EventTask['category'] })}
+              className="px-2 py-1 text-xs bg-white border border-secondary/40 rounded focus:outline-none focus:border-button"
+            >
+              <option value="準備">準備</option>
+              <option value="当日">当日</option>
+              <option value="事後">事後</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={onDelete}
+              className="px-2 py-1 text-xs text-alert hover:bg-alert/10 rounded transition-colors"
+            >
+              削除
+            </button>
+            <button
+              onClick={() => {
+                if (!task.title.trim()) {
+                  onDelete();
+                } else {
+                  onFinishEdit();
+                }
+              }}
+              className="px-3 py-1 text-xs bg-button text-white rounded hover:opacity-90 transition-opacity"
+            >
+              完了
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex items-center gap-3 p-3 bg-secondary/10 rounded-lg group cursor-pointer"
+      onClick={onEdit}
+    >
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${task.completed
+            ? 'bg-button border-button text-white'
+            : 'border-secondary/50 hover:border-button'
+          }`}
+      >
+        {task.completed && (
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      </button>
+      <div className="flex-1">
+        <span className={`text-sm ${task.completed ? 'text-paragraph/50 line-through' : 'text-headline'}`}>
+          {task.title || '(タスク名未設定)'}
+        </span>
+      </div>
+      <span className="text-xs text-paragraph/60 bg-secondary/30 px-2 py-1 rounded">
+        {task.assignee}
+      </span>
+      <span className="text-xs text-paragraph/60">
+        {task.dueDate.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+      </span>
+      <svg className="w-4 h-4 text-paragraph/30 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+      </svg>
+    </div>
+  );
+}
+
 export default function EventsPage() {
+  const { staff } = useApp();
   const [events, setEvents] = useState<Event[]>(sampleEvents);
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
   const [statusFilter, setStatusFilter] = useState<EventStatus | 'all'>('all');
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'tasks' | 'handovers' | 'report'>('tasks');
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
   const filteredEvents = events.filter(event =>
     statusFilter === 'all' || event.status === statusFilter
@@ -164,6 +312,43 @@ export default function EventsPage() {
     }));
   };
 
+  const addTask = (eventId: string) => {
+    const newId = `t${Date.now()}`;
+    setEvents(prev => prev.map(event => {
+      if (event.id !== eventId) return event;
+      const newTask: EventTask = {
+        id: newId,
+        title: '',
+        assignee: '未定',
+        dueDate: new Date(),
+        completed: false,
+        category: '準備',
+      };
+      return { ...event, tasks: [...event.tasks, newTask] };
+    }));
+    setEditingTaskId(newId);
+  };
+
+  const updateTask = (eventId: string, taskId: string, updates: Partial<EventTask>) => {
+    setEvents(prev => prev.map(event => {
+      if (event.id !== eventId) return event;
+      return {
+        ...event,
+        tasks: event.tasks.map(task =>
+          task.id === taskId ? { ...task, ...updates } : task
+        ),
+      };
+    }));
+  };
+
+  const deleteTask = (eventId: string, taskId: string) => {
+    setEvents(prev => prev.map(event => {
+      if (event.id !== eventId) return event;
+      return { ...event, tasks: event.tasks.filter(t => t.id !== taskId) };
+    }));
+    setEditingTaskId(null);
+  };
+
   const getTaskProgress = (tasks: EventTask[]) => {
     if (tasks.length === 0) return 0;
     return Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
@@ -176,11 +361,48 @@ export default function EventsPage() {
     reviewed: events.filter(e => e.status === 'reviewed').length,
   };
 
+  // 新規行事モーダル
+  const [showNewEventModal, setShowNewEventModal] = useState(false);
+  const [newEventForm, setNewEventForm] = useState({
+    title: '',
+    date: new Date().toISOString().split('T')[0],
+    endDate: '',
+    description: '',
+    location: '',
+    coordinator: '',
+    targetClasses: [] as string[],
+  });
+
+  const handleSaveNewEvent = () => {
+    if (!newEventForm.title || !newEventForm.date) return;
+    const coordinator = staff.find(s => `${s.lastName} ${s.firstName}` === newEventForm.coordinator) ? newEventForm.coordinator : (staff[0] ? `${staff[0].lastName}${staff[0].firstName}` : '未定');
+    const newEvent: Event = {
+      id: `evt-${Date.now()}`,
+      title: newEventForm.title,
+      date: new Date(newEventForm.date + 'T00:00:00'),
+      endDate: newEventForm.endDate ? new Date(newEventForm.endDate + 'T00:00:00') : undefined,
+      description: newEventForm.description,
+      status: 'planning',
+      location: newEventForm.location || '未定',
+      coordinator,
+      targetClasses: newEventForm.targetClasses.length > 0 ? newEventForm.targetClasses : ['全クラス'],
+      tasks: [],
+      handovers: [],
+    };
+    setEvents(prev => [newEvent, ...prev]);
+    setShowNewEventModal(false);
+    setNewEventForm({ title: '', date: new Date().toISOString().split('T')[0], endDate: '', description: '', location: '', coordinator: '', targetClasses: [] });
+    setExpandedEvent(newEvent.id);
+  };
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-headline">行事</h1>
-        <button className="px-4 py-2 bg-button text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2">
+        <button
+          onClick={() => setShowNewEventModal(true)}
+          className="px-4 py-2 bg-button text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
+        >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
@@ -263,17 +485,15 @@ export default function EventsPage() {
         <div className="flex bg-secondary/30 rounded-lg p-1">
           <button
             onClick={() => setViewMode('timeline')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              viewMode === 'timeline' ? 'bg-surface text-headline shadow' : 'text-paragraph/60 hover:text-paragraph'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === 'timeline' ? 'bg-surface text-headline shadow' : 'text-paragraph/60 hover:text-paragraph'
+              }`}
           >
             タイムライン
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              viewMode === 'list' ? 'bg-surface text-headline shadow' : 'text-paragraph/60 hover:text-paragraph'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === 'list' ? 'bg-surface text-headline shadow' : 'text-paragraph/60 hover:text-paragraph'
+              }`}
           >
             リスト
           </button>
@@ -366,31 +586,28 @@ export default function EventsPage() {
                   <div className="flex border-b border-secondary/30">
                     <button
                       onClick={() => setActiveTab('tasks')}
-                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-                        activeTab === 'tasks'
+                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'tasks'
                           ? 'text-button border-b-2 border-button'
                           : 'text-paragraph/60 hover:text-paragraph'
-                      }`}
+                        }`}
                     >
                       タスク ({event.tasks.length})
                     </button>
                     <button
                       onClick={() => setActiveTab('handovers')}
-                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-                        activeTab === 'handovers'
+                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'handovers'
                           ? 'text-button border-b-2 border-button'
                           : 'text-paragraph/60 hover:text-paragraph'
-                      }`}
+                        }`}
                     >
                       申し送り ({event.handovers.length})
                     </button>
                     <button
                       onClick={() => setActiveTab('report')}
-                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-                        activeTab === 'report'
+                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'report'
                           ? 'text-button border-b-2 border-button'
                           : 'text-paragraph/60 hover:text-paragraph'
-                      }`}
+                        }`}
                     >
                       報告書
                     </button>
@@ -409,36 +626,17 @@ export default function EventsPage() {
                               <h4 className="text-sm font-medium text-paragraph/60 mb-2">{category}</h4>
                               <div className="space-y-2">
                                 {categoryTasks.map((task) => (
-                                  <div
+                                  <TaskRow
                                     key={task.id}
-                                    className="flex items-center gap-3 p-3 bg-secondary/10 rounded-lg"
-                                  >
-                                    <button
-                                      onClick={() => toggleTask(event.id, task.id)}
-                                      className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                        task.completed
-                                          ? 'bg-button border-button text-white'
-                                          : 'border-secondary/50 hover:border-button'
-                                      }`}
-                                    >
-                                      {task.completed && (
-                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                        </svg>
-                                      )}
-                                    </button>
-                                    <div className="flex-1">
-                                      <span className={`text-sm ${task.completed ? 'text-paragraph/50 line-through' : 'text-headline'}`}>
-                                        {task.title}
-                                      </span>
-                                    </div>
-                                    <span className="text-xs text-paragraph/60 bg-secondary/30 px-2 py-1 rounded">
-                                      {task.assignee}
-                                    </span>
-                                    <span className="text-xs text-paragraph/60">
-                                      {task.dueDate.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
-                                    </span>
-                                  </div>
+                                    task={task}
+                                    staffList={staff}
+                                    isEditing={editingTaskId === task.id}
+                                    onToggle={() => toggleTask(event.id, task.id)}
+                                    onEdit={() => setEditingTaskId(task.id)}
+                                    onUpdate={(updates) => updateTask(event.id, task.id, updates)}
+                                    onDelete={() => deleteTask(event.id, task.id)}
+                                    onFinishEdit={() => setEditingTaskId(null)}
+                                  />
                                 ))}
                               </div>
                             </div>
@@ -447,7 +645,10 @@ export default function EventsPage() {
                         {event.tasks.length === 0 && (
                           <p className="text-center text-paragraph/50 py-4">タスクがありません</p>
                         )}
-                        <button className="w-full py-2 border-2 border-dashed border-secondary/50 rounded-lg text-paragraph/60 hover:border-button hover:text-button transition-colors flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => addTask(event.id)}
+                          className="w-full py-2 border-2 border-dashed border-secondary/50 rounded-lg text-paragraph/60 hover:border-button hover:text-button transition-colors flex items-center justify-center gap-2"
+                        >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                           </svg>
@@ -584,6 +785,120 @@ export default function EventsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           <p className="text-paragraph/60">該当する行事がありません</p>
+        </div>
+      )}
+
+      {/* 新規行事モーダル */}
+      {showNewEventModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowNewEventModal(false)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative bg-surface rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-surface/95 backdrop-blur-sm border-b border-secondary/20 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+              <h2 className="text-xl font-bold text-headline">新規行事の登録</h2>
+              <button onClick={() => setShowNewEventModal(false)} className="p-2 hover:bg-secondary/20 rounded-lg text-paragraph/60 transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* 行事名 */}
+              <div>
+                <label className="block text-sm font-medium text-headline mb-2">行事名 *</label>
+                <input
+                  type="text"
+                  value={newEventForm.title}
+                  onChange={e => setNewEventForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="運動会、クリスマス会..."
+                  className="w-full px-3 py-2 border border-secondary/30 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-button/40"
+                  autoFocus
+                />
+              </div>
+
+              {/* 日程 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-headline mb-2">開催日 *</label>
+                  <input type="date" value={newEventForm.date} onChange={e => setNewEventForm(f => ({ ...f, date: e.target.value }))} className="w-full px-3 py-2 border border-secondary/30 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-button/40" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-headline mb-2">終了日（任意）</label>
+                  <input type="date" value={newEventForm.endDate} onChange={e => setNewEventForm(f => ({ ...f, endDate: e.target.value }))} className="w-full px-3 py-2 border border-secondary/30 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-button/40" />
+                </div>
+              </div>
+
+              {/* 場所 */}
+              <div>
+                <label className="block text-sm font-medium text-headline mb-2">場所</label>
+                <input type="text" value={newEventForm.location} onChange={e => setNewEventForm(f => ({ ...f, location: e.target.value }))} placeholder="ホール、園庭..."
+                  className="w-full px-3 py-2 border border-secondary/30 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-button/40" />
+              </div>
+
+              {/* 担当者 */}
+              <div>
+                <label className="block text-sm font-medium text-headline mb-2">担当者</label>
+                <select value={newEventForm.coordinator} onChange={e => setNewEventForm(f => ({ ...f, coordinator: e.target.value }))} className="w-full px-3 py-2 border border-secondary/30 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-button/40">
+                  <option value="">選択してください</option>
+                  {staff.map(s => (
+                    <option key={s.id} value={`${s.lastName} ${s.firstName}`}>
+                      {s.lastName} {s.firstName}（{s.role}）
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 対象クラス */}
+              <div>
+                <label className="block text-sm font-medium text-headline mb-2">対象クラス</label>
+                <div className="flex flex-wrap gap-2">
+                  {['全クラス', '年少組', '年中組', '年長組'].map(cls => (
+                    <button
+                      key={cls}
+                      onClick={() => setNewEventForm(f => ({
+                        ...f,
+                        targetClasses: f.targetClasses.includes(cls)
+                          ? f.targetClasses.filter(c => c !== cls)
+                          : [...f.targetClasses, cls],
+                      }))}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${newEventForm.targetClasses.includes(cls)
+                          ? 'bg-button text-white'
+                          : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
+                        }`}
+                    >
+                      {cls}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 概要 */}
+              <div>
+                <label className="block text-sm font-medium text-headline mb-2">概要（任意）</label>
+                <textarea
+                  value={newEventForm.description}
+                  onChange={e => setNewEventForm(f => ({ ...f, description: e.target.value }))}
+                  rows={3}
+                  placeholder="行事の内容やポイント..."
+                  className="w-full px-3 py-2 border border-secondary/30 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-button/40 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-secondary/20">
+                <button onClick={() => setShowNewEventModal(false)} className="px-4 py-2.5 text-sm text-paragraph/60 hover:bg-secondary/20 rounded-xl transition-colors">キャンセル</button>
+                <button
+                  onClick={handleSaveNewEvent}
+                  disabled={!newEventForm.title || !newEventForm.date}
+                  className="flex-1 py-2.5 bg-button text-white rounded-xl font-medium hover:opacity-90 transition-opacity text-sm disabled:opacity-40"
+                >
+                  登録する
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

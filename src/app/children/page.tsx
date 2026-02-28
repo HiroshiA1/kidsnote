@@ -6,7 +6,7 @@ import { GrowthDomain, growthDomainLabels } from '@/types/child';
 import { useApp } from '@/components/AppLayout';
 import { ChildWithGrowth } from '@/lib/childrenStore';
 
-type ViewMode = 'card' | 'list';
+type ViewMode = 'card' | 'list' | 'class-group';
 type SortKey = 'name' | 'age' | 'class' | 'grade';
 type SortOrder = 'asc' | 'desc';
 
@@ -151,7 +151,7 @@ export default function ChildrenPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('card');
+  const [viewMode, setViewMode] = useState<ViewMode>('class-group');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
@@ -192,6 +192,32 @@ export default function ChildrenPage() {
 
     return result;
   }, [childrenData, searchQuery, selectedClass, selectedGrade, sortKey, sortOrder]);
+
+  // Group children by grade → class for class-group view
+  const groupedByClass = useMemo(() => {
+    const groups: { grade: string; classes: { className: string; children: ChildWithGrowth[] }[] }[] = [];
+    const gradeMap = new Map<string, Map<string, ChildWithGrowth[]>>();
+
+    for (const child of filteredAndSortedChildren) {
+      const grade = child.grade;
+      if (!gradeMap.has(grade)) gradeMap.set(grade, new Map());
+      const classMap = gradeMap.get(grade)!;
+      if (!classMap.has(child.className)) classMap.set(child.className, []);
+      classMap.get(child.className)!.push(child);
+    }
+
+    for (const grade of gradeOrder) {
+      const classMap = gradeMap.get(grade);
+      if (!classMap) continue;
+      const classes: { className: string; children: ChildWithGrowth[] }[] = [];
+      for (const [className, kids] of classMap) {
+        classes.push({ className, children: kids });
+      }
+      groups.push({ grade, classes });
+    }
+
+    return groups;
+  }, [filteredAndSortedChildren]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -240,6 +266,17 @@ export default function ChildrenPage() {
 
           {/* 表示切替 */}
           <div className="flex bg-surface border border-secondary/30 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setViewMode('class-group')}
+              className={`px-3 py-2 transition-colors ${
+                viewMode === 'class-group' ? 'bg-button text-white' : 'text-paragraph hover:bg-secondary/20'
+              }`}
+              title="クラス別表示"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </button>
             <button
               onClick={() => setViewMode('card')}
               className={`px-3 py-2 transition-colors ${
@@ -331,7 +368,36 @@ export default function ChildrenPage() {
 
       {/* 園児リスト */}
       <main className="max-w-4xl mx-auto px-6 pb-8">
-        {viewMode === 'card' ? (
+        {viewMode === 'class-group' ? (
+          <div className="space-y-6">
+            {groupedByClass.map(gradeGroup => (
+              <div key={gradeGroup.grade}>
+                <h2 className="text-lg font-bold text-headline mb-3 flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-button/20 rounded-full text-button text-sm">
+                    {gradeGroup.grade}
+                  </span>
+                </h2>
+                <div className="space-y-4">
+                  {gradeGroup.classes.map(cls => (
+                    <div key={cls.className}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-sm font-semibold text-headline">{cls.className}</h3>
+                        <span className="text-xs px-1.5 py-0.5 bg-secondary/30 rounded-full text-paragraph/70">
+                          {cls.children.length}名
+                        </span>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {cls.children.map(child => (
+                          <ChildCard key={child.id} child={child} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : viewMode === 'card' ? (
           <div className="grid gap-4 sm:grid-cols-2">
             {filteredAndSortedChildren.map(child => (
               <ChildCard key={child.id} child={child} />
