@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { SmartInput, Attachment } from './SmartInput';
 import { IntentResult, InputMessage, AddChildData, AddStaffData } from '@/types/intent';
@@ -106,6 +107,8 @@ export function useApp() {
 
 
 export function AppLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isLoginPage = pathname === '/login';
   const [messages, setMessages] = useState<InputMessage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -548,9 +551,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
       }}
     >
       <div className="flex min-h-screen bg-background">
-        <Sidebar isCollapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
-        <main className={`flex-1 pb-32 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
-          {!demoBannerDismissed && (
+        {!isLoginPage && <Sidebar isCollapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />}
+        <main className={`flex-1 ${isLoginPage ? '' : 'pb-32'} transition-all duration-300 ${isLoginPage ? '' : sidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+          {!isLoginPage && !demoBannerDismissed && (
             <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-sm text-amber-800">
               <span>デモモード — データはブラウザに保存されます。本番環境ではありません</span>
               <button
@@ -567,9 +570,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
           )}
           {children}
         </main>
-        <FloatingPopup sidebarCollapsed={sidebarCollapsed} />
+        {!isLoginPage && <FloatingPopup sidebarCollapsed={sidebarCollapsed} />}
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-        <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} />
+        {!isLoginPage && <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} />}
       </div>
     </AppContext.Provider>
   );
