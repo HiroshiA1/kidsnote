@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useApp } from '@/components/AppLayout';
 import { ChildEditModal } from '@/components/ChildEditModal';
+import DocumentGenerateModal from '@/components/DocumentGenerateModal';
 import { MiniRadarChart } from '@/components/growth/RadarChartView';
 import { GrowthCategoryId, GrowthEvaluation } from '@/types/growth';
 import { growthCategories } from '@/lib/constants/growthCategories';
@@ -52,6 +53,7 @@ export default function ChildDetailPage() {
   const params = useParams();
   const { children: childrenData, messages, updateChild, setSelectedChildId } = useApp();
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDocModal, setShowDocModal] = useState(false);
 
   const child = childrenData.find(c => c.id === params.id);
 
@@ -107,17 +109,34 @@ export default function ChildDetailPage() {
             </Link>
             <h1 className="text-lg sm:text-xl font-bold text-headline">園児詳細</h1>
           </div>
-          <button
-            onClick={() => setShowEditModal(true)}
-            className="px-4 py-2 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-            編集
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowDocModal(true)}
+              className="px-3 sm:px-4 py-2 bg-tertiary text-headline rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1.5"
+              title="文書を生成"
+            >
+              📝 <span className="hidden sm:inline">文書生成</span>
+            </button>
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="px-3 sm:px-4 py-2 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span className="hidden sm:inline">編集</span>
+            </button>
+          </div>
         </div>
       </header>
+
+      {/* 文書生成モーダル */}
+      <DocumentGenerateModal
+        open={showDocModal}
+        onClose={() => setShowDocModal(false)}
+        child={child}
+        messages={messages}
+      />
 
       {/* 編集モーダル */}
       {showEditModal && (
