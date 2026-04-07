@@ -15,9 +15,10 @@ interface SmartInputProps {
   isProcessing?: boolean;
   placeholder?: string;
   sidebarCollapsed?: boolean;
+  selectedChildName?: string | null;
 }
 
-export function SmartInput({ onSubmit, isProcessing = false, placeholder, sidebarCollapsed = false }: SmartInputProps) {
+export function SmartInput({ onSubmit, isProcessing = false, placeholder, sidebarCollapsed = false, selectedChildName }: SmartInputProps) {
   const [input, setInput] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -176,7 +177,7 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
   const displayText = input + (interimTranscript ? interimTranscript : '');
 
   return (
-    <div className={`fixed bottom-0 right-0 p-4 bg-background border-t border-secondary/20 transition-all duration-300 ${sidebarCollapsed ? 'left-16' : 'left-64'}`}>
+    <div className={`fixed bottom-0 right-0 p-3 sm:p-4 bg-background border-t border-secondary/20 transition-all duration-300 left-0 ${sidebarCollapsed ? 'md:left-16' : 'md:left-64'}`}>
       <div className="max-w-3xl mx-auto">
         {/* 音声入力中のインジケーター */}
         {isListening && (
@@ -222,6 +223,19 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
                 </span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* 選択中の園児チップ */}
+        {selectedChildName && (
+          <div className="flex items-center gap-2 mb-1 px-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-button/10 border border-button/30 rounded-full text-xs font-medium text-button">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              {selectedChildName}
+            </span>
+            <span className="text-xs text-paragraph/40">に関する入力として記録</span>
           </div>
         )}
 

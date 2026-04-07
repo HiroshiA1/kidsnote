@@ -1,0 +1,91 @@
+import { IntentType } from '@/types/intent';
+
+export interface IntentConfigItem {
+  label: string;
+  icon: string;
+  bgColor: string;
+  borderColor: string;
+  /** IntentCard用 */
+  color: string;
+  /** FloatingPopup用 */
+  actionLabel: string;
+  /** Dashboard用 */
+  cardBg: string;
+  href: string;
+}
+
+export const intentConfig: Record<IntentType, IntentConfigItem> = {
+  growth: {
+    label: '成長記録',
+    icon: '🌱',
+    color: 'text-headline',
+    bgColor: 'bg-tertiary/30',
+    borderColor: 'border-tertiary',
+    actionLabel: '保存する',
+    cardBg: 'bg-tertiary/20',
+    href: '/records/growth',
+  },
+  incident: {
+    label: 'ヒヤリハット',
+    icon: '⚠️',
+    color: 'text-headline',
+    bgColor: 'bg-alert/20',
+    borderColor: 'border-alert',
+    actionLabel: '保存する',
+    cardBg: 'bg-alert/10',
+    href: '/records/incident',
+  },
+  handover: {
+    label: '申し送り',
+    icon: '📝',
+    color: 'text-headline',
+    bgColor: 'bg-secondary/30',
+    borderColor: 'border-button',
+    actionLabel: '保存する',
+    cardBg: 'bg-secondary/20',
+    href: '/records/handover',
+  },
+  child_update: {
+    label: '園児情報更新',
+    icon: '👤',
+    color: 'text-headline',
+    bgColor: 'bg-surface',
+    borderColor: 'border-paragraph/30',
+    actionLabel: '保存する',
+    cardBg: 'bg-paragraph/5',
+    href: '/records/child-update',
+  },
+  add_child: {
+    label: '園児追加',
+    icon: '👶',
+    color: 'text-headline',
+    bgColor: 'bg-button/10',
+    borderColor: 'border-button',
+    actionLabel: '追加する',
+    cardBg: 'bg-button/5',
+    href: '/children',
+  },
+  add_staff: {
+    label: '職員追加',
+    icon: '👩‍🏫',
+    color: 'text-headline',
+    bgColor: 'bg-tertiary/20',
+    borderColor: 'border-tertiary',
+    actionLabel: '追加する',
+    cardBg: 'bg-tertiary/10',
+    href: '/staff',
+  },
+  rule_query: {
+    label: 'ルール質問',
+    icon: '📚',
+    color: 'text-headline',
+    bgColor: 'bg-button/10',
+    borderColor: 'border-button/50',
+    actionLabel: '確認',
+    cardBg: 'bg-button/5',
+    href: '/rules',
+  },
+};
+
+/** ダッシュボードで表示する記録タイプ */
+export const recordIntentTypes = ['growth', 'incident', 'handover', 'child_update'] as const;

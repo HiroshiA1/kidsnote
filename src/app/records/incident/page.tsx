@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useApp } from '@/components/AppLayout';
-import { IntentCard } from '@/components/IntentCard';
 import { IncidentData } from '@/types/intent';
-import { sampleRecords } from '@/lib/sampleData';
 import { ChildLinks } from '@/components/ChildLink';
+import { formatDate, formatDateGroup, severityLabels } from '@/lib/formatters';
+import { useRecordPage } from '@/hooks/useRecordPage';
+import { PendingSection, EmptyState, RecordPageHeader } from '@/components/RecordPageTemplate';
 
 type FilterMode = 'all' | 'low' | 'medium' | 'high';
 type EscalationStatus = 'none' | 'escalated' | 'responded';
@@ -21,22 +21,13 @@ interface IncidentExtra {
 }
 
 export default function IncidentRecordsPage() {
-  const { messages, confirmMessage, editMessage, cancelMessage, markForRecord, staff } = useApp();
+  const { pendingMessages, savedMessages, groupByDate, confirmMessage, editMessage, cancelMessage, markForRecord, staff } = useRecordPage({ intentType: 'incident' });
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [extras, setExtras] = useState<Record<string, IncidentExtra>>({});
   const [showEscalateModal, setShowEscalateModal] = useState<string | null>(null);
   const [showResponseModal, setShowResponseModal] = useState<string | null>(null);
   const [escalateForm, setEscalateForm] = useState({ to: '', note: '' });
   const [responseForm, setResponseForm] = useState({ response: '', followUp: '' });
-
-  const pendingMessages = messages.filter(
-    m => (m.status === 'processing' || m.status === 'confirmed') && m.result?.intent === 'incident'
-  );
-
-  const savedMessages = [
-    ...messages.filter(m => m.status === 'saved' && m.result?.intent === 'incident'),
-    ...sampleRecords.filter(r => r.result?.intent === 'incident'),
-  ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
   const filteredMessages = savedMessages.filter(m => {
     if (filterMode === 'all') return true;
@@ -91,26 +82,14 @@ export default function IncidentRecordsPage() {
     setShowResponseModal(null);
   };
 
-  const formatDate = (date: Date) =>
-    date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-  const formatDateGroup = (date: Date) =>
-    date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-
-  const severityLabels = { low: '軽微', medium: '中程度', high: '重大' };
-  const severityColors = {
+  const severityBadgeColors: Record<string, string> = {
     low: 'bg-tertiary text-white',
     medium: 'bg-secondary text-headline',
     high: 'bg-alert text-white',
   };
-  const severityBorders = { low: 'border-tertiary', medium: 'border-secondary', high: 'border-alert' };
+  const severityBorders: Record<string, string> = { low: 'border-tertiary', medium: 'border-secondary', high: 'border-alert' };
 
-  // 日付でグループ化
-  const grouped = filteredMessages.reduce<Record<string, typeof filteredMessages>>((acc, m) => {
-    const key = m.timestamp.toDateString();
-    (acc[key] ||= []).push(m);
-    return acc;
-  }, {});
+  const grouped = groupByDate(filteredMessages);
 
   // エスカレーション先の候補（園長・主任）
   const escalationTargets = staff.filter(s =>
@@ -119,94 +98,45 @@ export default function IncidentRecordsPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-xl font-bold text-headline">ヒヤリハット</h1>
-            <div className="flex items-center gap-3 text-sm text-paragraph/60">
-              {escalatedCount > 0 && (
-                <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-600 rounded-full">
-                  エスカレーション {escalatedCount}件
-                </span>
-              )}
-              <span>{savedMessages.length}件</span>
-            </div>
+      <RecordPageHeader
+        title="ヒヤリハット"
+        rightContent={
+          <div className="flex items-center gap-3 text-sm text-paragraph/60">
+            {escalatedCount > 0 && (
+              <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-600 rounded-full">
+                エスカレーション {escalatedCount}件
+              </span>
+            )}
+            <span>{savedMessages.length}件</span>
           </div>
-
-          {/* フィルター */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilterMode('all')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filterMode === 'all' ? 'bg-button text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-              }`}
-            >
-              すべて ({savedMessages.length})
-            </button>
-            <button
-              onClick={() => setFilterMode('high')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filterMode === 'high' ? 'bg-alert text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-              }`}
-            >
-              重大 ({countBySeverity('high')})
-            </button>
-            <button
-              onClick={() => setFilterMode('medium')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filterMode === 'medium' ? 'bg-button text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-              }`}
-            >
-              中程度 ({countBySeverity('medium')})
-            </button>
-            <button
-              onClick={() => setFilterMode('low')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filterMode === 'low' ? 'bg-tertiary text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-              }`}
-            >
-              軽微 ({countBySeverity('low')})
-            </button>
-          </div>
+        }
+      >
+        <div className="flex gap-2">
+          {(['all', 'high', 'medium', 'low'] as const).map(mode => {
+            const labels = { all: `すべて (${savedMessages.length})`, high: `重大 (${countBySeverity('high')})`, medium: `中程度 (${countBySeverity('medium')})`, low: `軽微 (${countBySeverity('low')})` };
+            const activeColors = { all: 'bg-button text-white', high: 'bg-alert text-white', medium: 'bg-button text-white', low: 'bg-tertiary text-white' };
+            return (
+              <button
+                key={mode}
+                onClick={() => setFilterMode(mode)}
+                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filterMode === mode ? activeColors[mode] : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'}`}
+              >
+                {labels[mode]}
+              </button>
+            );
+          })}
         </div>
-      </header>
+      </RecordPageHeader>
 
-      <main className="max-w-4xl mx-auto px-6 py-6 space-y-6">
-        {/* 確認待ち */}
-        {pendingMessages.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium text-paragraph/60 mb-3">確認待ち</h2>
-            <div className="space-y-4">
-              {pendingMessages.map(message => (
-                <div key={message.id}>
-                  {message.status === 'processing' && (
-                    <div className="bg-surface rounded-lg p-4 shadow-sm animate-pulse">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-alert/30 rounded-full" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 bg-alert/30 rounded w-3/4" />
-                          <div className="h-3 bg-alert/20 rounded w-1/2" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {message.status === 'confirmed' && message.result && (
-                    <IntentCard
-                      result={message.result}
-                      originalText={message.content}
-                      onConfirm={() => confirmMessage(message.id)}
-                      onEdit={(newIntent) => editMessage(message.id, newIntent)}
-                      onCancel={() => cancelMessage(message.id)}
-                      onLinkToGrowth={() => {}}
-                      onMarkForRecord={() => markForRecord(message.id)}
-                      isMarkedForRecord={message.isMarkedForRecord}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-6">
+        <PendingSection
+          pendingMessages={pendingMessages}
+          confirmMessage={confirmMessage}
+          editMessage={editMessage}
+          cancelMessage={cancelMessage}
+          markForRecord={markForRecord}
+          skeletonColor="bg-alert"
+        />
 
         {/* 保存済み（日付グループ） */}
         {Object.entries(grouped).map(([dateKey, dayMessages]) => (
@@ -227,7 +157,7 @@ export default function IncidentRecordsPage() {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${severityColors[data.severity]}`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${severityBadgeColors[data.severity]}`}>
                             {severityLabels[data.severity]}
                           </span>
                           {extra.escalation === 'escalated' && (
@@ -314,17 +244,14 @@ export default function IncidentRecordsPage() {
         ))}
 
         {filteredMessages.length === 0 && pendingMessages.length === 0 && (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 mx-auto mb-4 bg-secondary/20 rounded-full flex items-center justify-center">
+          <EmptyState
+            icon={
               <svg className="w-8 h-8 text-paragraph/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
-            </div>
-            <h2 className="text-lg font-medium text-headline mb-2">
-              {filterMode === 'all' ? 'ヒヤリハット記録がありません' : `${severityLabels[filterMode]}のヒヤリハットはありません`}
-            </h2>
-            <p className="text-paragraph/70">下の入力欄から記録を追加してください</p>
-          </div>
+            }
+            message={filterMode === 'all' ? 'ヒヤリハット記録がありません' : `${severityLabels[filterMode]}のヒヤリハットはありません`}
+          />
         )}
       </main>
 

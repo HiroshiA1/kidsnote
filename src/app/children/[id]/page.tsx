@@ -1,154 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Child, GrowthLevel, GrowthDomain, growthDomainLabels, growthLevelLabels } from '@/types/child';
+import { useApp } from '@/components/AppLayout';
+import { ChildEditModal } from '@/components/ChildEditModal';
+import { MiniRadarChart } from '@/components/growth/RadarChartView';
+import { GrowthCategoryId, GrowthEvaluation } from '@/types/growth';
+import { growthCategories } from '@/lib/constants/growthCategories';
 import { InputMessage, GrowthData } from '@/types/intent';
-
-// サンプルデータ
-const sampleChild: Child & { growthLevels: GrowthLevel[] } = {
-  id: '1',
-  firstName: 'たろう',
-  lastName: 'やまだ',
-  firstNameKanji: '太郎',
-  lastNameKanji: '山田',
-  birthDate: new Date('2020-04-15'),
-  classId: 'sakura',
-  className: 'さくら組',
-  gender: 'male',
-  allergies: ['卵'],
-  characteristics: ['活発', '友達思い'],
-  emergencyContact: {
-    name: '山田花子',
-    phone: '090-1234-5678',
-    relationship: '母',
-  },
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  growthLevels: [
-    { domain: 'health', level: 3, lastUpdated: new Date('2025-01-08'), linkedEpisodeIds: ['ep1', 'ep2'] },
-    { domain: 'relationships', level: 2, lastUpdated: new Date('2025-01-05'), linkedEpisodeIds: ['ep3'] },
-    { domain: 'environment', level: 2, lastUpdated: new Date('2025-01-03'), linkedEpisodeIds: [] },
-    { domain: 'language', level: 3, lastUpdated: new Date('2025-01-10'), linkedEpisodeIds: ['ep4'] },
-    { domain: 'expression', level: 2, lastUpdated: new Date('2025-01-01'), linkedEpisodeIds: [] },
-  ],
-};
-
-const sampleEpisodes: InputMessage[] = [
-  {
-    id: 'ep1',
-    content: '今日は初めて鉄棒で逆上がりができた',
-    timestamp: new Date('2025-01-08T10:30:00'),
-    status: 'saved',
-    isMarkedForRecord: true,
-    result: {
-      intent: 'growth',
-      data: {
-        child_names: ['たろう'],
-        summary: '初めて鉄棒で逆上がりができた',
-        tags: ['運動', '達成'],
-      } as GrowthData,
-    },
-  },
-  {
-    id: 'ep2',
-    content: '給食を残さず食べられるようになった',
-    timestamp: new Date('2025-01-06T12:00:00'),
-    status: 'saved',
-    isMarkedForRecord: false,
-    result: {
-      intent: 'growth',
-      data: {
-        child_names: ['たろう'],
-        summary: '給食を残さず食べられるようになった',
-        tags: ['食事', '成長'],
-      } as GrowthData,
-    },
-  },
-  {
-    id: 'ep3',
-    content: '友達と協力してブロックで大きな城を作った',
-    timestamp: new Date('2025-01-05T14:00:00'),
-    status: 'saved',
-    isMarkedForRecord: true,
-    result: {
-      intent: 'growth',
-      data: {
-        child_names: ['たろう', 'けんた'],
-        summary: '友達と協力してブロックで大きな城を作った',
-        tags: ['協調性', '創作'],
-      } as GrowthData,
-    },
-  },
-  {
-    id: 'ep4',
-    content: '絵本の内容を自分の言葉で説明できた',
-    timestamp: new Date('2025-01-10T11:00:00'),
-    status: 'saved',
-    isMarkedForRecord: true,
-    result: {
-      intent: 'growth',
-      data: {
-        child_names: ['たろう'],
-        summary: '絵本の内容を自分の言葉で説明できた',
-        tags: ['言語', '理解力'],
-      } as GrowthData,
-    },
-  },
-];
-
-function GrowthLevelBar({ level, domain }: { level: 1 | 2 | 3 | 4; domain: GrowthDomain }) {
-  const colors = {
-    1: 'bg-paragraph/30',
-    2: 'bg-secondary',
-    3: 'bg-tertiary',
-    4: 'bg-button',
-  };
-
-  return (
-    <div className="flex-1">
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-medium text-headline">{growthDomainLabels[domain]}</span>
-        <span className="text-xs text-paragraph/60">
-          Lv.{level} {growthLevelLabels[level]}
-        </span>
-      </div>
-      <div className="h-3 bg-paragraph/10 rounded-full overflow-hidden">
-        <div
-          className={`h-full ${colors[level]} rounded-full transition-all duration-500`}
-          style={{ width: `${level * 25}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function GrowthLevelSelector({
-  currentLevel,
-  onSelect,
-}: {
-  currentLevel: 1 | 2 | 3 | 4;
-  onSelect: (level: 1 | 2 | 3 | 4) => void;
-}) {
-  return (
-    <div className="flex gap-2">
-      {([1, 2, 3, 4] as const).map(level => (
-        <button
-          key={level}
-          onClick={() => onSelect(level)}
-          className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-            level === currentLevel
-              ? 'bg-button text-white'
-              : 'bg-secondary/30 text-paragraph hover:bg-secondary/50'
-          }`}
-        >
-          Lv.{level}
-        </button>
-      ))}
-    </div>
-  );
-}
+import { ChildRelationships } from '@/components/ChildRelationships';
 
 function EpisodeCard({ episode, isLinked }: { episode: InputMessage; isLinked: boolean }) {
   const formatDate = (date: Date) =>
@@ -189,55 +50,98 @@ function EpisodeCard({ episode, isLinked }: { episode: InputMessage; isLinked: b
 
 export default function ChildDetailPage() {
   const params = useParams();
-  const [child, setChild] = useState(sampleChild);
-  const [selectedDomain, setSelectedDomain] = useState<GrowthDomain | null>(null);
-  const [episodes] = useState(sampleEpisodes);
+  const { children: childrenData, messages, updateChild, setSelectedChildId } = useApp();
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  const child = childrenData.find(c => c.id === params.id);
+
+  // 園児詳細ページでは自動的にselectedChildIdを設定（AIチャット連携）
+  useEffect(() => {
+    if (child) {
+      setSelectedChildId(child.id);
+    }
+    return () => setSelectedChildId(null);
+  }, [child, setSelectedChildId]);
+
+  // この園児に紐づくエピソード
+  const episodes = useMemo(() => {
+    if (!child) return [];
+    return messages
+      .filter(m => m.status === 'saved' && m.result?.intent === 'growth')
+      .filter(m => {
+        if (m.linkedChildIds?.includes(child.id)) return true;
+        const data = m.result?.data as GrowthData;
+        if (!data?.child_names) return false;
+        const names = [child.firstName, child.lastName, child.firstNameKanji, child.lastNameKanji].filter(Boolean);
+        return data.child_names.some(cn => names.some(n => cn.includes(n!)));
+      });
+  }, [messages, child]);
+
+  if (!child) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg text-paragraph/60">園児が見つかりません</p>
+          <Link href="/children" className="text-sm text-button hover:underline mt-2 inline-block">
+            一覧に戻る
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const age = Math.floor(
     (new Date().getTime() - child.birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
   );
 
-  const handleLevelChange = (domain: GrowthDomain, newLevel: 1 | 2 | 3 | 4) => {
-    setChild(prev => ({
-      ...prev,
-      growthLevels: prev.growthLevels.map(gl =>
-        gl.domain === domain ? { ...gl, level: newLevel, lastUpdated: new Date() } : gl
-      ),
-    }));
-  };
-
-  const currentGrowthLevel = selectedDomain
-    ? child.growthLevels.find(gl => gl.domain === selectedDomain)
-    : null;
+  const evaluations = child.growthEvaluations || [];
 
   return (
     <div className="min-h-screen pb-8">
       {/* ヘッダー */}
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/children"
-              className="text-paragraph/60 hover:text-paragraph transition-colors text-sm"
-            >
-              ← 一覧に戻る
+        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <Link href="/children" className="text-paragraph/60 hover:text-paragraph transition-colors text-sm">
+              ← 戻る
             </Link>
-            <h1 className="text-xl font-bold text-headline">園児詳細</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-headline">園児詳細</h1>
           </div>
+          <button
+            onClick={() => setShowEditModal(true)}
+            className="px-4 py-2 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            編集
+          </button>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      {/* 編集モーダル */}
+      {showEditModal && (
+        <ChildEditModal
+          child={child}
+          onSave={(updated) => {
+            updateChild(updated);
+            setShowEditModal(false);
+          }}
+          onClose={() => setShowEditModal(false)}
+        />
+      )}
+
+      <main className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 py-6 space-y-6">
         {/* 基本情報カード */}
         <section className="bg-surface rounded-xl p-6 shadow-sm">
           <div className="flex items-start justify-between mb-4">
             <div>
               <h2 className="text-3xl font-bold text-headline">
-                {child.lastName} {child.firstName}
+                {child.lastNameKanji || child.lastName} {child.firstNameKanji || child.firstName}
               </h2>
               {(child.lastNameKanji || child.firstNameKanji) && (
                 <p className="text-sm text-paragraph/60 mt-1">
-                  {child.lastNameKanji} {child.firstNameKanji}
+                  {child.lastName} {child.firstName}
                 </p>
               )}
             </div>
@@ -246,7 +150,7 @@ export default function ChildDetailPage() {
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 text-sm">
             <div>
               <span className="text-paragraph/60">年齢</span>
               <p className="text-headline font-medium">{age}歳</p>
@@ -296,89 +200,84 @@ export default function ChildDetailPage() {
               </div>
             </div>
           )}
+
+          {/* 興味・関心 */}
+          {child.interests && child.interests.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-paragraph/10">
+              <span className="text-sm text-paragraph/60">現在の興味・関心</span>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {child.interests.map((interest, i) => (
+                  <span key={i} className="px-3 py-1 bg-button/15 text-button rounded-full text-sm">
+                    {interest}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
-        {/* 成長記録 */}
+        {/* 友達関係 */}
+        <ChildRelationships
+          child={child}
+          allChildren={childrenData}
+          onUpdate={(relationships) => {
+            updateChild({ ...child, relationships });
+          }}
+        />
+
+        {/* 成長記録 (3カテゴリ) */}
         <section className="bg-surface rounded-xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-headline">成長記録 (5領域)</h3>
+            <h3 className="text-lg font-bold text-headline">成長記録</h3>
             <Link
               href={`/children/${child.id}/record`}
               className="text-sm text-button hover:text-button/80 transition-colors"
             >
-              要録を作成 →
+              詳細な評価 →
             </Link>
           </div>
 
-          <div className="space-y-4">
-            {child.growthLevels.map(gl => (
-              <button
-                key={gl.domain}
-                onClick={() => setSelectedDomain(selectedDomain === gl.domain ? null : gl.domain)}
-                className={`w-full text-left p-3 rounded-lg transition-colors ${
-                  selectedDomain === gl.domain
-                    ? 'bg-button/10 ring-2 ring-button'
-                    : 'hover:bg-secondary/20'
-                }`}
-              >
-                <GrowthLevelBar level={gl.level} domain={gl.domain} />
-                <p className="text-xs text-paragraph/50 mt-1">
-                  最終更新: {gl.lastUpdated.toLocaleDateString('ja-JP')} / 根拠エピソード: {gl.linkedEpisodeIds.length}件
-                </p>
-              </button>
-            ))}
-          </div>
+          {evaluations.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {growthCategories.map(cat => (
+                <div key={cat.id} className="border border-secondary/20 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span>{cat.icon}</span>
+                    <h4 className="text-sm font-medium text-headline truncate">{cat.label}</h4>
+                  </div>
+                  <MiniRadarChart categoryId={cat.id as GrowthCategoryId} evaluations={evaluations} />
+                  <Link
+                    href={`/children/${child.id}/record?tab=${cat.id}`}
+                    className="text-xs text-button hover:underline block text-center mt-2"
+                  >
+                    詳細を見る →
+                  </Link>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-paragraph/50 text-center py-8">
+              まだ成長評価データがありません
+            </p>
+          )}
         </section>
-
-        {/* 選択した領域の詳細 */}
-        {selectedDomain && currentGrowthLevel && (
-          <section className="bg-surface rounded-xl p-6 shadow-sm">
-            <h3 className="text-lg font-bold text-headline mb-4">
-              {growthDomainLabels[selectedDomain]}の詳細
-            </h3>
-
-            <div className="mb-6">
-              <p className="text-sm text-paragraph/60 mb-2">レベルを変更</p>
-              <GrowthLevelSelector
-                currentLevel={currentGrowthLevel.level}
-                onSelect={(level) => handleLevelChange(selectedDomain, level)}
-              />
-            </div>
-
-            <div>
-              <p className="text-sm text-paragraph/60 mb-2">
-                関連エピソード ({currentGrowthLevel.linkedEpisodeIds.length}件)
-              </p>
-              <div className="space-y-2">
-                {episodes
-                  .filter(ep => currentGrowthLevel.linkedEpisodeIds.includes(ep.id))
-                  .map(ep => (
-                    <EpisodeCard key={ep.id} episode={ep} isLinked={true} />
-                  ))}
-                {currentGrowthLevel.linkedEpisodeIds.length === 0 && (
-                  <p className="text-sm text-paragraph/50 py-4 text-center">
-                    まだ根拠となるエピソードがありません
-                  </p>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
 
         {/* 全エピソード */}
         <section className="bg-surface rounded-xl p-6 shadow-sm">
           <h3 className="text-lg font-bold text-headline mb-4">
-            全エピソード ({episodes.length}件)
+            エピソード ({episodes.length}件)
           </h3>
-          <div className="space-y-2">
-            {episodes.map(ep => (
-              <EpisodeCard
-                key={ep.id}
-                episode={ep}
-                isLinked={child.growthLevels.some(gl => gl.linkedEpisodeIds.includes(ep.id))}
-              />
-            ))}
-          </div>
+          {episodes.length > 0 ? (
+            <div className="space-y-2">
+              {episodes.map(ep => (
+                <EpisodeCard key={ep.id} episode={ep} isLinked={false} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-paragraph/50 text-center py-4">
+              まだエピソードがありません。入力欄から記録を追加してください。
+            </p>
+          )}
         </section>
       </main>
     </div>

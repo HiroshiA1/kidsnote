@@ -1,29 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { useApp } from '@/components/AppLayout';
-import { IntentCard } from '@/components/IntentCard';
 import { HandoverData } from '@/types/intent';
-import { sampleRecords } from '@/lib/sampleData';
 import { ChildLinks } from '@/components/ChildLink';
+import { formatDate, formatDateGroup } from '@/lib/formatters';
+import { useRecordPage } from '@/hooks/useRecordPage';
+import { PendingSection, EmptyState, RecordPageHeader } from '@/components/RecordPageTemplate';
 
 type FilterMode = 'all' | 'unread' | 'urgent';
 
 export default function HandoverRecordsPage() {
-  const { messages, confirmMessage, editMessage, cancelMessage, markForRecord, staff } = useApp();
+  const { pendingMessages, savedMessages, groupByDate, confirmMessage, editMessage, cancelMessage, markForRecord } = useRecordPage({ intentType: 'handover' });
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
   const [escalatedIds, setEscalatedIds] = useState<Set<string>>(new Set());
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
-
-  const pendingMessages = messages.filter(
-    m => (m.status === 'processing' || m.status === 'confirmed') && m.result?.intent === 'handover'
-  );
-
-  const savedMessages = [
-    ...messages.filter(m => m.status === 'saved' && m.result?.intent === 'handover'),
-    ...sampleRecords.filter(r => r.result?.intent === 'handover'),
-  ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
   const filteredMessages = savedMessages.filter(m => {
     if (filterMode === 'unread') return !readIds.has(m.id);
@@ -60,101 +51,47 @@ export default function HandoverRecordsPage() {
     setEscalatedIds(prev => new Set(prev).add(id));
   };
 
-  const formatDate = (date: Date) =>
-    date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  const formatDateGroup = (date: Date) =>
-    date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-
-  // 日付でグループ化
-  const grouped = filteredMessages.reduce<Record<string, typeof filteredMessages>>((acc, m) => {
-    const key = m.timestamp.toDateString();
-    (acc[key] ||= []).push(m);
-    return acc;
-  }, {});
+  const grouped = groupByDate(filteredMessages);
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-headline">申し送り</h1>
-            </div>
-            <button
-              onClick={markAllRead}
-              className="text-xs px-3 py-1.5 text-button hover:bg-button/10 rounded-lg transition-colors"
-            >
-              すべて既読にする
-            </button>
-          </div>
-
-          {/* フィルター */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilterMode('all')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filterMode === 'all' ? 'bg-button text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-              }`}
-            >
-              すべて ({savedMessages.length})
-            </button>
-            <button
-              onClick={() => setFilterMode('unread')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filterMode === 'unread' ? 'bg-button text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-              }`}
-            >
-              未読 ({unreadCount})
-            </button>
-            <button
-              onClick={() => setFilterMode('urgent')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filterMode === 'urgent' ? 'bg-alert text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-              }`}
-            >
-              至急 ({urgentCount})
-            </button>
-          </div>
+      <RecordPageHeader
+        title="申し送り"
+        rightContent={
+          <button
+            onClick={markAllRead}
+            className="text-xs px-3 py-1.5 text-button hover:bg-button/10 rounded-lg transition-colors"
+          >
+            すべて既読にする
+          </button>
+        }
+      >
+        <div className="flex gap-2">
+          {([['all', `すべて (${savedMessages.length})`], ['unread', `未読 (${unreadCount})`], ['urgent', `至急 (${urgentCount})`]] as const).map(([mode, label]) => {
+            const activeColor = mode === 'urgent' ? 'bg-alert text-white' : 'bg-button text-white';
+            return (
+              <button
+                key={mode}
+                onClick={() => setFilterMode(mode)}
+                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filterMode === mode ? activeColor : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
-      </header>
+      </RecordPageHeader>
 
-      <main className="max-w-4xl mx-auto px-6 py-6 space-y-6">
-        {/* 確認待ち */}
-        {pendingMessages.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium text-paragraph/60 mb-3">確認待ち</h2>
-            <div className="space-y-4">
-              {pendingMessages.map(message => (
-                <div key={message.id}>
-                  {message.status === 'processing' && (
-                    <div className="bg-surface rounded-lg p-4 shadow-sm animate-pulse">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-button/30 rounded-full" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 bg-button/30 rounded w-3/4" />
-                          <div className="h-3 bg-button/20 rounded w-1/2" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {message.status === 'confirmed' && message.result && (
-                    <IntentCard
-                      result={message.result}
-                      originalText={message.content}
-                      onConfirm={() => confirmMessage(message.id)}
-                      onEdit={(newIntent) => editMessage(message.id, newIntent)}
-                      onCancel={() => cancelMessage(message.id)}
-                      onLinkToGrowth={() => {}}
-                      onMarkForRecord={() => markForRecord(message.id)}
-                      isMarkedForRecord={message.isMarkedForRecord}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-6">
+        <PendingSection
+          pendingMessages={pendingMessages}
+          confirmMessage={confirmMessage}
+          editMessage={editMessage}
+          cancelMessage={cancelMessage}
+          markForRecord={markForRecord}
+          skeletonColor="bg-button"
+        />
 
         {/* 保存済み（日付グループ） */}
         {Object.entries(grouped).map(([dateKey, dayMessages]) => (
@@ -254,17 +191,14 @@ export default function HandoverRecordsPage() {
         ))}
 
         {filteredMessages.length === 0 && pendingMessages.length === 0 && (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 mx-auto mb-4 bg-secondary/20 rounded-full flex items-center justify-center">
+          <EmptyState
+            icon={
               <svg className="w-8 h-8 text-paragraph/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
               </svg>
-            </div>
-            <h2 className="text-lg font-medium text-headline mb-2">
-              {filterMode === 'unread' ? '未読の申し送りはありません' : filterMode === 'urgent' ? '至急の申し送りはありません' : '申し送りがありません'}
-            </h2>
-            <p className="text-paragraph/70">下の入力欄から記録を追加してください</p>
-          </div>
+            }
+            message={filterMode === 'unread' ? '未読の申し送りはありません' : filterMode === 'urgent' ? '至急の申し送りはありません' : '申し送りがありません'}
+          />
         )}
       </main>
     </div>

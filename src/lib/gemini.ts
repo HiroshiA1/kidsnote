@@ -236,7 +236,7 @@ export async function classifyIntent(
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite-preview' });
 
     // 匿名化済みテキストをAPIに送信
     const result = await model.generateContent(CLASSIFICATION_PROMPT + anonymization.anonymizedText);

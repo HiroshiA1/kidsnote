@@ -206,7 +206,7 @@ export default function DocumentsPage() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-6 py-4">
+        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4">
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-xl font-bold text-headline">書類</h1>
             {activeTab === 'workflow' && (
@@ -250,7 +250,7 @@ export default function DocumentsPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-6 space-y-6">
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-6">
         {activeTab === 'workflow' && (
           <>
             {/* フィルター */}

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { GrowthDomain, growthDomainLabels } from '@/types/child';
 import { useApp } from '@/components/AppLayout';
 import { ChildWithGrowth } from '@/lib/childrenStore';
+import { calculateAge } from '@/lib/formatters';
 
 type ViewMode = 'card' | 'list' | 'class-group';
 type SortKey = 'name' | 'age' | 'class' | 'grade';
@@ -25,9 +26,7 @@ function GrowthLevelBadge({ level }: { level: 1 | 2 | 3 | 4 }) {
 }
 
 function ChildCard({ child }: { child: ChildWithGrowth }) {
-  const age = Math.floor(
-    (new Date().getTime() - child.birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-  );
+  const age = calculateAge(child.birthDate);
 
   return (
     <Link href={`/children/${child.id}`}>
@@ -85,16 +84,14 @@ function ChildCard({ child }: { child: ChildWithGrowth }) {
 }
 
 function ChildListItem({ child }: { child: ChildWithGrowth }) {
-  const age = Math.floor(
-    (new Date().getTime() - child.birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-  );
+  const age = calculateAge(child.birthDate);
 
   return (
     <Link href={`/children/${child.id}`}>
       <div className="bg-surface rounded-lg p-3 hover:bg-secondary/10 transition-colors border-b border-secondary/10">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           {/* アバター */}
-          <div className="w-10 h-10 bg-button/10 rounded-full flex items-center justify-center flex-shrink-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 bg-button/10 rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-sm font-bold text-button">
               {child.lastName.charAt(0)}
             </span>
@@ -102,42 +99,43 @@ function ChildListItem({ child }: { child: ChildWithGrowth }) {
 
           {/* 名前 */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-headline truncate">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <h3 className="font-bold text-headline truncate text-sm sm:text-base">
                 {child.lastName} {child.firstName}
               </h3>
               {child.allergies.length > 0 && (
-                <span className="text-xs px-1.5 py-0.5 bg-alert/20 text-alert rounded">
+                <span className="text-xs px-1.5 py-0.5 bg-alert/20 text-alert rounded hidden sm:inline">
                   アレルギー有
                 </span>
               )}
             </div>
-            <p className="text-xs text-paragraph/60">
+            <p className="text-xs text-paragraph/60 truncate">
               {child.lastNameKanji} {child.firstNameKanji}
+              <span className="sm:hidden"> / {age}歳</span>
             </p>
           </div>
 
-          {/* 年齢・性別 */}
-          <div className="text-sm text-paragraph/70 w-16 text-center">
+          {/* 年齢・性別（タブレット以上） */}
+          <div className="text-sm text-paragraph/70 w-16 text-center hidden sm:block">
             {age}歳 {child.gender === 'male' ? '男' : child.gender === 'female' ? '女' : '他'}
           </div>
 
-          {/* 学年 */}
-          <div className="w-16">
+          {/* 学年（タブレット以上） */}
+          <div className="hidden sm:block w-16">
             <span className="text-xs px-2 py-0.5 bg-button/20 rounded-full text-button">
               {child.grade}
             </span>
           </div>
 
-          {/* クラス */}
-          <div className="w-24 text-right">
+          {/* クラス（タブレット以上） */}
+          <div className="hidden md:block w-24 text-right">
             <span className="text-xs px-2 py-0.5 bg-secondary/30 rounded-full text-paragraph">
               {child.className}
             </span>
           </div>
 
           {/* 矢印 */}
-          <svg className="w-5 h-5 text-paragraph/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-5 h-5 text-paragraph/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </div>
@@ -151,7 +149,7 @@ export default function ChildrenPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('class-group');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
@@ -231,14 +229,14 @@ export default function ChildrenPage() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <h1 className="text-xl font-bold text-headline">園児一覧</h1>
           <span className="text-sm text-paragraph/60">{filteredAndSortedChildren.length}名</span>
         </div>
       </header>
 
       {/* 検索・フィルター・表示切替 */}
-      <div className="max-w-4xl mx-auto px-6 py-4 space-y-3">
+      <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 space-y-3">
         {/* 検索 */}
         <div className="flex gap-3">
           <div className="flex-1 relative">
@@ -303,7 +301,7 @@ export default function ChildrenPage() {
         </div>
 
         {/* フィルター・ソート */}
-        <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
           <select
             value={selectedGrade}
             onChange={e => setSelectedGrade(e.target.value)}
@@ -367,7 +365,7 @@ export default function ChildrenPage() {
       </div>
 
       {/* 園児リスト */}
-      <main className="max-w-4xl mx-auto px-6 pb-8">
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 pb-8">
         {viewMode === 'class-group' ? (
           <div className="space-y-6">
             {groupedByClass.map(gradeGroup => (
@@ -404,19 +402,54 @@ export default function ChildrenPage() {
             ))}
           </div>
         ) : (
-          <div className="bg-surface rounded-xl border border-secondary/20 overflow-hidden">
-            {/* リストヘッダー */}
-            <div className="bg-secondary/10 px-3 py-2 flex items-center gap-4 text-xs text-paragraph/60 font-medium">
-              <div className="w-10" />
-              <div className="flex-1">名前</div>
-              <div className="w-16 text-center">年齢</div>
-              <div className="w-16">学年</div>
-              <div className="w-24 text-right">クラス</div>
-              <div className="w-5" />
-            </div>
-            {filteredAndSortedChildren.map(child => (
-              <ChildListItem key={child.id} child={child} />
-            ))}
+          <div className="space-y-4">
+            {/* クラス別グルーピングリスト表示 */}
+            {(() => {
+              // クラスごとにグループ化
+              const classGroups = new Map<string, ChildWithGrowth[]>();
+              for (const child of filteredAndSortedChildren) {
+                const key = child.className;
+                if (!classGroups.has(key)) classGroups.set(key, []);
+                classGroups.get(key)!.push(child);
+              }
+              // 学年順にソートしてからクラス名順
+              const gradeWeight: Record<string, number> = { '年少': 1, '年中': 2, '年長': 3 };
+              const sortedGroups = [...classGroups.entries()].sort(([, a], [, b]) => {
+                const gA = gradeWeight[a[0]?.grade] ?? 0;
+                const gB = gradeWeight[b[0]?.grade] ?? 0;
+                if (gA !== gB) return gA - gB;
+                return a[0]?.className.localeCompare(b[0]?.className) ?? 0;
+              });
+
+              return sortedGroups.map(([className, kids]) => (
+                <div key={className} className="bg-surface rounded-xl border border-secondary/20 overflow-hidden">
+                  {/* クラスヘッダー */}
+                  <div className="bg-button/5 border-b-2 border-button/20 px-4 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-button/15 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-button" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-headline">{className}</h3>
+                      <p className="text-xs text-paragraph/50">{kids[0]?.grade} / {kids.length}名</p>
+                    </div>
+                  </div>
+                  {/* リストヘッダー */}
+                  <div className="bg-secondary/5 px-3 py-1.5 flex items-center gap-2 sm:gap-4 text-xs text-paragraph/50 font-medium border-b border-secondary/10">
+                    <div className="w-9 sm:w-10" />
+                    <div className="flex-1">名前</div>
+                    <div className="w-16 text-center hidden sm:block">年齢</div>
+                    <div className="w-16 hidden sm:block">学年</div>
+                    <div className="w-24 text-right hidden md:block">クラス</div>
+                    <div className="w-5" />
+                  </div>
+                  {kids.map(child => (
+                    <ChildListItem key={child.id} child={child} />
+                  ))}
+                </div>
+              ));
+            })()}
           </div>
         )}
 

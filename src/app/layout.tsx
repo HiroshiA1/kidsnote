@@ -16,6 +16,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "KidsNote - 幼稚園業務管理システム",
   description: "保育の瞬間を逃さず記録し、AIが全ての事務処理を代行する",
+  openGraph: {
+    title: "KidsNote - 幼稚園業務管理システム",
+    description: "保育の瞬間を逃さず記録し、AIが全ての事務処理を代行する",
+    type: "website",
+    locale: "ja_JP",
+    siteName: "KidsNote",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "KidsNote - 幼稚園業務管理システム",
+    description: "保育の瞬間を逃さず記録し、AIが全ての事務処理を代行する",
+  },
 };
 
 export default function RootLayout({

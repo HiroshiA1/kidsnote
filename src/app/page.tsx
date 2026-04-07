@@ -3,47 +3,12 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/components/AppLayout';
-import { InputMessage, GrowthData, IncidentData, HandoverData, ChildUpdateData } from '@/types/intent';
+import { IntentType, InputMessage, GrowthData, IncidentData, HandoverData, ChildUpdateData } from '@/types/intent';
 import { sampleRecords } from '@/lib/sampleData';
 import { ChildLinks } from '@/components/ChildLink';
 import { getChildDisplayName } from '@/lib/childrenStore';
-
-const intentConfig: Record<string, { label: string; bgColor: string; borderColor: string; icon: string; cardBg: string; href: string }> = {
-  growth: {
-    label: '成長記録',
-    bgColor: 'bg-tertiary/30',
-    borderColor: 'border-tertiary',
-    cardBg: 'bg-tertiary/20',
-    icon: '🌱',
-    href: '/records/growth',
-  },
-  incident: {
-    label: 'ヒヤリハット',
-    bgColor: 'bg-alert/20',
-    borderColor: 'border-alert',
-    cardBg: 'bg-alert/10',
-    icon: '⚠️',
-    href: '/records/incident',
-  },
-  handover: {
-    label: '申し送り',
-    bgColor: 'bg-secondary/30',
-    borderColor: 'border-button',
-    cardBg: 'bg-secondary/20',
-    icon: '📝',
-    href: '/records/handover',
-  },
-  child_update: {
-    label: '園児情報更新',
-    bgColor: 'bg-surface',
-    borderColor: 'border-paragraph/30',
-    cardBg: 'bg-paragraph/5',
-    icon: '👤',
-    href: '/records/child-update',
-  },
-};
-
-const recordIntentTypes = ['growth', 'incident', 'handover', 'child_update'] as const;
+import { intentConfig, recordIntentTypes } from '@/lib/constants/intentConfig';
+import { ChildSearchWidget } from '@/components/ChildSearchWidget';
 
 function isToday(date: Date): boolean {
   const now = new Date();
@@ -79,7 +44,7 @@ function TodayRecordSection({
   intentType,
   records,
 }: {
-  intentType: string;
+  intentType: IntentType;
   records: InputMessage[];
 }) {
   const [expanded, setExpanded] = useState(records.length > 0);
@@ -227,9 +192,11 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function Dashboard() {
-  const { messages } = useApp();
+  const { messages, children: childrenData, selectedChildId, setSelectedChildId } = useApp();
   const [today, setToday] = useState('');
   const [showWelcome, setShowWelcome] = useState(false);
+
+  const selectedChild = selectedChildId ? childrenData.find(c => c.id === selectedChildId) : null;
 
   useEffect(() => {
     setToday(new Date().toLocaleDateString('ja-JP', {
@@ -270,13 +237,43 @@ export default function Dashboard() {
 
       {/* ページヘッダー */}
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <h1 className="text-xl font-bold text-headline">ダッシュボード</h1>
           <span className="text-sm text-paragraph/60">{today}</span>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-6 space-y-8">
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-8">
+        {/* 園児検索 */}
+        <section>
+          <ChildSearchWidget
+            children={childrenData}
+            selectedChildId={selectedChildId}
+            onSelect={setSelectedChildId}
+          />
+          {selectedChild && (
+            <div className="mt-3 bg-surface rounded-xl border border-secondary/20 p-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-button/10 flex items-center justify-center text-lg font-bold text-button">
+                  {(selectedChild.lastNameKanji || selectedChild.lastName).charAt(0)}
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-headline">
+                    {getChildDisplayName(selectedChild.id, childrenData)}
+                  </p>
+                  <p className="text-sm text-paragraph/60">
+                    {selectedChild.className} / {selectedChild.gender === 'male' ? '男の子' : selectedChild.gender === 'female' ? '女の子' : 'その他'}
+                    {selectedChild.allergies.length > 0 && ` / アレルギー: ${selectedChild.allergies.join(', ')}`}
+                  </p>
+                </div>
+                <Link href={`/children/${selectedChild.id}`} className="text-sm text-button hover:underline">
+                  詳細 →
+                </Link>
+              </div>
+            </div>
+          )}
+        </section>
+
         {/* 日次安全確認 */}
         <section>
           <div className={`rounded-xl border p-4 flex items-center gap-4 ${
@@ -332,7 +329,7 @@ export default function Dashboard() {
         {/* クイックリンク */}
         <section>
           <h2 className="text-lg font-bold text-headline mb-4">クイックアクセス</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Link href="/children">
               <div className="bg-surface rounded-xl p-4 border border-secondary/20 hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-3">

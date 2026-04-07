@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { useApp } from '@/components/AppLayout';
-import { IntentCard } from '@/components/IntentCard';
 import { GrowthData } from '@/types/intent';
-import { sampleRecords } from '@/lib/sampleData';
 import { ChildLinks } from '@/components/ChildLink';
+import { formatDate, formatDateGroup, DEVELOPMENT_AREAS } from '@/lib/formatters';
+import { useRecordPage } from '@/hooks/useRecordPage';
+import { PendingSection, EmptyState, RecordPageHeader } from '@/components/RecordPageTemplate';
 
 type FilterMode = 'all' | 'photo' | 'case_note';
 type Visibility = 'staff_only' | 'guardians_allowed';
@@ -23,13 +23,9 @@ interface GrowthExtra {
   developmentArea?: string; // 発達領域
 }
 
-const DEVELOPMENT_AREAS = [
-  '健康', '人間関係', '環境', '言葉', '表現',
-  '身体的発達', '社会性', '認知・知的発達', '情緒',
-];
 
 export default function GrowthRecordsPage() {
-  const { messages, confirmMessage, editMessage, cancelMessage, markForRecord } = useApp();
+  const { pendingMessages, savedMessages, groupByDate, confirmMessage, editMessage, cancelMessage, markForRecord } = useRecordPage({ intentType: 'growth' });
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [extras, setExtras] = useState<Record<string, GrowthExtra>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -44,15 +40,6 @@ export default function GrowthRecordsPage() {
     caseNote: '',
     developmentArea: '',
   });
-
-  const pendingMessages = messages.filter(
-    m => (m.status === 'processing' || m.status === 'confirmed') && m.result?.intent === 'growth'
-  );
-
-  const savedMessages = [
-    ...messages.filter(m => m.status === 'saved' && m.result?.intent === 'growth'),
-    ...sampleRecords.filter(r => r.result?.intent === 'growth'),
-  ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
   const filteredMessages = savedMessages.filter(m => {
     if (filterMode === 'all') return true;
@@ -71,11 +58,6 @@ export default function GrowthRecordsPage() {
     episodes: [],
   };
 
-  const formatDate = (date: Date) =>
-    date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-  const formatDateGroup = (date: Date) =>
-    date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
 
   const openEdit = (id: string) => {
     const current = getExtra(id);
@@ -136,84 +118,45 @@ export default function GrowthRecordsPage() {
     setEditForm(f => ({ ...f, episodes: f.episodes.filter((_, i) => i !== idx) }));
   };
 
-  // 日付でグループ化
-  const grouped = filteredMessages.reduce<Record<string, typeof filteredMessages>>((acc, m) => {
-    const key = m.timestamp.toDateString();
-    (acc[key] ||= []).push(m);
-    return acc;
-  }, {});
+  const grouped = groupByDate(filteredMessages);
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-xl font-bold text-headline">成長記録</h1>
-            <span className="text-sm text-paragraph/60">{savedMessages.length}件</span>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilterMode('all')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filterMode === 'all' ? 'bg-tertiary text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-                }`}
-            >
-              すべて ({savedMessages.length})
-            </button>
-            <button
-              onClick={() => setFilterMode('photo')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filterMode === 'photo' ? 'bg-tertiary text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-                }`}
-            >
-              写真あり ({photoCount})
-            </button>
-            <button
-              onClick={() => setFilterMode('case_note')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filterMode === 'case_note' ? 'bg-tertiary text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'
-                }`}
-            >
-              ケースメモ ({caseNoteCount})
-            </button>
-          </div>
+      <RecordPageHeader
+        title="成長記録"
+        rightContent={<span className="text-sm text-paragraph/60">{savedMessages.length}件</span>}
+      >
+        <div className="flex gap-2">
+          <button
+            onClick={() => setFilterMode('all')}
+            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filterMode === 'all' ? 'bg-tertiary text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'}`}
+          >
+            すべて ({savedMessages.length})
+          </button>
+          <button
+            onClick={() => setFilterMode('photo')}
+            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filterMode === 'photo' ? 'bg-tertiary text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'}`}
+          >
+            写真あり ({photoCount})
+          </button>
+          <button
+            onClick={() => setFilterMode('case_note')}
+            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filterMode === 'case_note' ? 'bg-tertiary text-white' : 'bg-secondary/20 text-paragraph/70 hover:bg-secondary/30'}`}
+          >
+            ケースメモ ({caseNoteCount})
+          </button>
         </div>
-      </header>
+      </RecordPageHeader>
 
-      <main className="max-w-4xl mx-auto px-6 py-6 space-y-6">
-        {/* 確認待ち */}
-        {pendingMessages.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium text-paragraph/60 mb-3">確認待ち</h2>
-            <div className="space-y-4">
-              {pendingMessages.map(message => (
-                <div key={message.id}>
-                  {message.status === 'processing' && (
-                    <div className="bg-surface rounded-lg p-4 shadow-sm animate-pulse">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-tertiary/30 rounded-full" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 bg-tertiary/30 rounded w-3/4" />
-                          <div className="h-3 bg-tertiary/20 rounded w-1/2" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {message.status === 'confirmed' && message.result && (
-                    <IntentCard
-                      result={message.result}
-                      originalText={message.content}
-                      onConfirm={() => confirmMessage(message.id)}
-                      onEdit={(newIntent) => editMessage(message.id, newIntent)}
-                      onCancel={() => cancelMessage(message.id)}
-                      onLinkToGrowth={() => { }}
-                      onMarkForRecord={() => markForRecord(message.id)}
-                      isMarkedForRecord={message.isMarkedForRecord}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-6">
+        <PendingSection
+          pendingMessages={pendingMessages}
+          confirmMessage={confirmMessage}
+          editMessage={editMessage}
+          cancelMessage={cancelMessage}
+          markForRecord={markForRecord}
+          skeletonColor="bg-tertiary"
+        />
 
         {/* 保存済み（日付グループ） */}
         {Object.entries(grouped).map(([dateKey, dayMessages]) => (
@@ -359,17 +302,14 @@ export default function GrowthRecordsPage() {
         ))}
 
         {filteredMessages.length === 0 && pendingMessages.length === 0 && (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 mx-auto mb-4 bg-secondary/20 rounded-full flex items-center justify-center">
+          <EmptyState
+            icon={
               <svg className="w-8 h-8 text-paragraph/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
               </svg>
-            </div>
-            <h2 className="text-lg font-medium text-headline mb-2">
-              {filterMode === 'photo' ? '写真付きの記録はありません' : filterMode === 'case_note' ? 'ケースメモはありません' : '成長記録がありません'}
-            </h2>
-            <p className="text-paragraph/70">下の入力欄から記録を追加してください</p>
-          </div>
+            }
+            message={filterMode === 'photo' ? '写真付きの記録はありません' : filterMode === 'case_note' ? 'ケースメモはありません' : '成長記録がありません'}
+          />
         )}
       </main>
 
