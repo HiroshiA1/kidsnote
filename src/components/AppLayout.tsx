@@ -48,6 +48,7 @@ interface AppContextType {
   staff: Staff[];
   addChild: (child: ChildWithGrowth) => void;
   updateChild: (child: ChildWithGrowth) => void;
+  removeChild: (id: string) => void;
   addStaff: (staff: Staff) => void;
   updateStaff: (staff: Staff) => void;
   selectedChildId: string | null;
@@ -120,6 +121,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const updateChildInStore = (child: ChildWithGrowth) => {
     setChildrenData(prev => prev.map(c => c.id === child.id ? child : c));
     auditUpdate('child', child.id, { name: `${child.lastName} ${child.firstName}` });
+  };
+
+  const removeChildFromStore = (id: string) => {
+    setChildrenData(prev => prev.filter(c => c.id !== id));
+    auditDelete('child', id);
   };
 
   const addStaffToStore = (staff: Staff) => {
@@ -217,6 +223,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         staff: staffData,
         addChild: addChildToStore,
         updateChild: updateChildInStore,
+        removeChild: removeChildFromStore,
         addStaff: addStaffToStore,
         updateStaff: updateStaffInStore,
         selectedChildId,

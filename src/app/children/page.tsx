@@ -6,6 +6,7 @@ import { GrowthDomain, growthDomainLabels } from '@/types/child';
 import { useApp } from '@/components/AppLayout';
 import { ChildWithGrowth } from '@/lib/childrenStore';
 import { calculateAge } from '@/lib/formatters';
+import ChildCreateModal from '@/components/ChildCreateModal';
 
 type ViewMode = 'card' | 'list' | 'class-group';
 type SortKey = 'name' | 'age' | 'class' | 'grade';
@@ -83,8 +84,14 @@ function ChildCard({ child }: { child: ChildWithGrowth }) {
   );
 }
 
-function ChildListItem({ child }: { child: ChildWithGrowth }) {
+function ChildListItem({ child, onDelete }: { child: ChildWithGrowth; onDelete: (child: ChildWithGrowth) => void }) {
   const age = calculateAge(child.birthDate);
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onDelete(child);
+  };
 
   return (
     <Link href={`/children/${child.id}`}>
@@ -134,6 +141,17 @@ function ChildListItem({ child }: { child: ChildWithGrowth }) {
             </span>
           </div>
 
+          {/* 削除ボタン */}
+          <button
+            onClick={handleDeleteClick}
+            className="p-1.5 text-paragraph/40 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+            title="削除"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+
           {/* 矢印 */}
           <svg className="w-5 h-5 text-paragraph/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -145,8 +163,16 @@ function ChildListItem({ child }: { child: ChildWithGrowth }) {
 }
 
 export default function ChildrenPage() {
-  const { children: childrenData } = useApp();
+  const { children: childrenData, addChild, removeChild } = useApp();
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const handleDelete = (child: ChildWithGrowth) => {
+    const name = `${child.lastNameKanji || child.lastName} ${child.firstNameKanji || child.firstName}`.trim();
+    if (window.confirm(`${name} さんを削除しますか？\nこの操作は取り消せません。`)) {
+      removeChild(child.id);
+    }
+  };
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -231,9 +257,23 @@ export default function ChildrenPage() {
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
         <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <h1 className="text-xl font-bold text-headline">園児一覧</h1>
-          <span className="text-sm text-paragraph/60">{filteredAndSortedChildren.length}名</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-paragraph/60">{filteredAndSortedChildren.length}名</span>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-3 py-1.5 bg-button text-white text-sm rounded-lg hover:bg-button/90"
+            >
+              + 園児追加
+            </button>
+          </div>
         </div>
       </header>
+
+      <ChildCreateModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={addChild}
+      />
 
       {/* 検索・フィルター・表示切替 */}
       <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 space-y-3">
@@ -445,7 +485,7 @@ export default function ChildrenPage() {
                     <div className="w-5" />
                   </div>
                   {kids.map(child => (
-                    <ChildListItem key={child.id} child={child} />
+                    <ChildListItem key={child.id} child={child} onDelete={handleDelete} />
                   ))}
                 </div>
               ));
