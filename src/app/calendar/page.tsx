@@ -24,18 +24,27 @@ function buildMonthGrid(year: number, month: number): Date[] {
   return days;
 }
 
+function buildWeekGrid(ref: Date): Date[] {
+  const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - ref.getDay());
+  return Array.from({ length: 7 }, (_, i) =>
+    new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
+  );
+}
+
+type ViewMode = 'month' | 'week';
+
 export default function CalendarPage() {
   const { calendarEvents, fiscalYear, staff, settings } = useApp();
   const today = new Date();
-  const [cursor, setCursor] = useState<{ year: number; month: number }>({
-    year: today.getFullYear(),
-    month: today.getMonth(),
-  });
+  const [view, setView] = useState<ViewMode>('month');
+  const [cursor, setCursor] = useState<Date>(today);
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(today));
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
-  const grid = useMemo(() => buildMonthGrid(cursor.year, cursor.month), [cursor]);
+  const monthGrid = useMemo(() => buildMonthGrid(cursor.getFullYear(), cursor.getMonth()), [cursor]);
+  const weekGrid = useMemo(() => buildWeekGrid(cursor), [cursor]);
+  const grid = view === 'month' ? monthGrid : weekGrid;
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
@@ -51,23 +60,25 @@ export default function CalendarPage() {
 
   const dayEvents = eventsByDate[selectedDate] ?? [];
 
-  const prevMonth = () => {
+  const shift = (delta: number) => {
     setCursor(c => {
-      const m = c.month - 1;
-      return m < 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: m };
-    });
-  };
-  const nextMonth = () => {
-    setCursor(c => {
-      const m = c.month + 1;
-      return m > 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: m };
+      if (view === 'month') return new Date(c.getFullYear(), c.getMonth() + delta, 1);
+      return new Date(c.getFullYear(), c.getMonth(), c.getDate() + delta * 7);
     });
   };
   const goToday = () => {
     const t = new Date();
-    setCursor({ year: t.getFullYear(), month: t.getMonth() });
+    setCursor(t);
     setSelectedDate(toDateKey(t));
   };
+
+  const headerLabel = view === 'month'
+    ? `${cursor.getFullYear()}年${cursor.getMonth() + 1}月`
+    : (() => {
+        const s = weekGrid[0];
+        const e = weekGrid[6];
+        return `${s.getFullYear()}年${s.getMonth() + 1}/${s.getDate()} - ${e.getMonth() + 1}/${e.getDate()}`;
+      })();
 
   const openCreate = (date: string) => {
     setEditingEvent(null);
@@ -113,17 +124,27 @@ export default function CalendarPage() {
       <main className="max-w-6xl mx-auto px-4 py-6 grid gap-6 lg:grid-cols-[1fr_320px]">
         {/* 月ビュー */}
         <section className="bg-surface rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <div className="flex items-center gap-2">
-              <button onClick={prevMonth} className="px-2 py-1 rounded hover:bg-secondary/20">‹</button>
-              <h2 className="text-lg font-bold text-headline">
-                {cursor.year}年{cursor.month + 1}月
-              </h2>
-              <button onClick={nextMonth} className="px-2 py-1 rounded hover:bg-secondary/20">›</button>
+              <button onClick={() => shift(-1)} className="px-2 py-1 rounded hover:bg-secondary/20">‹</button>
+              <h2 className="text-lg font-bold text-headline">{headerLabel}</h2>
+              <button onClick={() => shift(1)} className="px-2 py-1 rounded hover:bg-secondary/20">›</button>
             </div>
-            <button onClick={goToday} className="text-xs px-2 py-1 rounded border border-secondary/30 hover:bg-secondary/20">
-              今日
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-md border border-secondary/30 overflow-hidden text-xs">
+                <button
+                  onClick={() => setView('month')}
+                  className={`px-3 py-1 ${view === 'month' ? 'bg-button text-white' : 'hover:bg-secondary/20'}`}
+                >月</button>
+                <button
+                  onClick={() => setView('week')}
+                  className={`px-3 py-1 ${view === 'week' ? 'bg-button text-white' : 'hover:bg-secondary/20'}`}
+                >週</button>
+              </div>
+              <button onClick={goToday} className="text-xs px-2 py-1 rounded border border-secondary/30 hover:bg-secondary/20">
+                今日
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-7 gap-px bg-secondary/20 border border-secondary/20 rounded-lg overflow-hidden">
@@ -134,17 +155,19 @@ export default function CalendarPage() {
             ))}
             {grid.map((d, idx) => {
               const key = toDateKey(d);
-              const inMonth = d.getMonth() === cursor.month;
+              const inMonth = view === 'week' || d.getMonth() === cursor.getMonth();
               const isToday = toDateKey(new Date()) === key;
               const isSelected = selectedDate === key;
               const evs = eventsByDate[key] ?? [];
               const dayOfWeek = d.getDay();
+              const maxShow = view === 'week' ? 12 : 3;
+              const cellMin = view === 'week' ? 'min-h-[320px]' : 'min-h-[88px]';
               return (
                 <button
                   key={idx}
                   onClick={() => setSelectedDate(key)}
                   onDoubleClick={() => openCreate(key)}
-                  className={`bg-surface min-h-[88px] p-1.5 text-left transition-colors ${
+                  className={`bg-surface ${cellMin} p-1.5 text-left transition-colors ${
                     inMonth ? '' : 'opacity-40'
                   } ${isSelected ? 'ring-2 ring-button ring-inset' : 'hover:bg-secondary/10'}`}
                 >
@@ -154,23 +177,24 @@ export default function CalendarPage() {
                     dayOfWeek === 6 ? 'text-blue-600' :
                     'text-paragraph'
                   }`}>
-                    {d.getDate()}
+                    {view === 'week' ? `${d.getMonth() + 1}/${d.getDate()}` : d.getDate()}
                   </div>
                   <div className="mt-1 space-y-0.5">
-                    {evs.slice(0, 3).map(ev => {
+                    {evs.slice(0, maxShow).map(ev => {
                       const c = CATEGORY_COLORS[ev.category];
                       return (
                         <div
                           key={ev.id}
-                          className={`text-[10px] truncate px-1 py-0.5 rounded ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                          className={`text-[10px] px-1 py-0.5 rounded ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''} ${view === 'week' ? 'whitespace-normal break-words' : 'truncate'}`}
                           title={ev.title}
                         >
+                          {!ev.allDay && ev.startTime && <span className="mr-1">{ev.startTime}</span>}
                           {ev.title}
                         </div>
                       );
                     })}
-                    {evs.length > 3 && (
-                      <div className="text-[10px] text-paragraph/60">+{evs.length - 3}件</div>
+                    {evs.length > maxShow && (
+                      <div className="text-[10px] text-paragraph/60">+{evs.length - maxShow}件</div>
                     )}
                   </div>
                 </button>
