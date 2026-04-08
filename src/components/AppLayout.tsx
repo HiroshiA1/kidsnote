@@ -10,6 +10,7 @@ import { ChildWithGrowth } from '@/lib/childrenStore';
 import { AttendanceRecord } from '@/types/document';
 import { SchoolSettings } from '@/types/settings';
 import { ShiftPattern, ShiftAssignment, StaffAttendanceRecord } from '@/types/staffAttendance';
+import { CalendarEvent } from '@/types/calendar';
 import { FloatingPopup } from './FloatingPopup';
 import { AppRole } from '@/lib/supabase/auth';
 import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit';
@@ -78,6 +79,10 @@ interface AppContextType {
   setCurrentStaffId: (id: string | null) => void;
   currentUserRole: AppRole | null;
   addToast: (toast: Omit<ToastMessage, 'id'>) => string;
+  calendarEvents: CalendarEvent[];
+  addCalendarEvent: (event: CalendarEvent) => void;
+  updateCalendarEvent: (event: CalendarEvent) => void;
+  deleteCalendarEvent: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -108,7 +113,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
     currentStaffId, setCurrentStaffId,
     currentUserRole,
     fiscalYear, setFiscalYear,
+    calendarEvents, setCalendarEvents,
   } = useHydration();
+
+  const addCalendarEvent = (event: CalendarEvent) => {
+    setCalendarEvents(prev => [...prev, event]);
+    auditCreate('calendar_event', event.id, { title: event.title });
+  };
+  const updateCalendarEvent = (event: CalendarEvent) => {
+    setCalendarEvents(prev => prev.map(e => e.id === event.id ? event : e));
+    auditUpdate('calendar_event', event.id, { title: event.title });
+  };
+  const deleteCalendarEvent = (id: string) => {
+    setCalendarEvents(prev => prev.filter(e => e.id !== id));
+    auditDelete('calendar_event', id);
+  };
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -255,6 +274,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
         setCurrentStaffId,
         currentUserRole,
         addToast,
+        calendarEvents,
+        addCalendarEvent,
+        updateCalendarEvent,
+        deleteCalendarEvent,
       }}
     >
       <div className="flex min-h-screen bg-background">

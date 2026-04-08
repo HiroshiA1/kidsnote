@@ -102,4 +102,5 @@ export const STORAGE_KEYS = {
   staffAttendance: 'kidsnote_staff_attendance',
   currentStaffId: 'kidsnote_current_staff_id',
   fiscalYear: 'kidsnote_fiscal_year',
+  calendarEvents: 'kidsnote_calendar_events',
 } as const;

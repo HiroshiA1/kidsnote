@@ -48,6 +48,7 @@ const PATHS = {
 export const topNavItems: NavItem[] = [
   { href: '/', label: 'ダッシュボード', iconPaths: [PATHS.home] },
   { href: '/children', label: '園児一覧', iconPaths: [PATHS.users] },
+  { href: '/calendar', label: 'カレンダー', iconPaths: [PATHS.calendar] },
 ];
 
 /** セクション定義 */

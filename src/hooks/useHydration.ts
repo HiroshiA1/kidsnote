@@ -11,6 +11,7 @@ import { AppRole } from '@/lib/supabase/auth';
 import { getCurrentFiscalYear } from '@/lib/fiscalYear';
 import type { Staff } from '@/components/AppLayout';
 import { initialStaff } from '@/lib/data/initialStaff';
+import { CalendarEvent } from '@/types/calendar';
 
 const staffRoleMap: Record<string, AppRole> = {
   '園長': 'admin',
@@ -33,6 +34,7 @@ export function useHydration() {
   const [currentStaffId, setCurrentStaffId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<AppRole | null>(null);
   const [fiscalYear, setFiscalYear] = useState<number>(getCurrentFiscalYear());
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate from localStorage after mount
@@ -57,6 +59,7 @@ export function useHydration() {
       setSettingsData({ ...loadedSettings, classes: loadedSettings.classes ?? defaultClasses });
       setShiftPatterns(loadFromStorage<ShiftPattern[]>(STORAGE_KEYS.shiftPatterns) ?? []);
       setShiftAssignments(loadFromStorage<ShiftAssignment[]>(STORAGE_KEYS.shiftAssignments) ?? []);
+      setCalendarEvents(loadFromStorage<CalendarEvent[]>(STORAGE_KEYS.calendarEvents) ?? []);
 
       const savedStaffId = loadFromStorage<string>(STORAGE_KEYS.currentStaffId) ?? null;
       setCurrentStaffId(savedStaffId);
@@ -86,6 +89,7 @@ export function useHydration() {
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.shiftAssignments, shiftAssignments); }, [shiftAssignments, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.staffAttendance, staffAttendanceData); }, [staffAttendanceData, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.fiscalYear, fiscalYear); }, [fiscalYear, hydrated]);
+  useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.calendarEvents, calendarEvents); }, [calendarEvents, hydrated]);
   useEffect(() => {
     if (hydrated) {
       saveToStorage(STORAGE_KEYS.currentStaffId, currentStaffId);
@@ -113,6 +117,7 @@ export function useHydration() {
     currentStaffId, setCurrentStaffId,
     currentUserRole,
     fiscalYear, setFiscalYear,
+    calendarEvents, setCalendarEvents,
     hydrated,
   };
 }
