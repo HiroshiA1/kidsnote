@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { useApp } from './AppLayout';
+import { getFiscalYearOptions, getCurrentFiscalYear } from '@/lib/fiscalYear';
 import { hasMinRole, type AppRole } from '@/lib/supabase/auth';
 import { topNavItems, navSections, type NavItem, type NavSection } from '@/lib/constants/navigation';
 
@@ -144,7 +145,8 @@ function CollapsibleSection({
 
 export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
-  const { currentUserRole } = useApp();
+  const { currentUserRole, fiscalYear, setFiscalYear } = useApp();
+  const yearOptions = getFiscalYearOptions();
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -203,6 +205,24 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
           )}
         </button>
       </div>
+
+      {/* 年度切替 */}
+      {!isCollapsed && (
+        <div className="px-4 pt-3 pb-2 border-b border-secondary/10">
+          <label className="block text-[10px] text-paragraph/50 font-medium mb-1 uppercase tracking-wide">年度</label>
+          <select
+            value={fiscalYear}
+            onChange={(e) => setFiscalYear(Number(e.target.value))}
+            className="w-full px-2 py-1.5 bg-surface border border-secondary/30 rounded-md text-sm text-headline focus:outline-none focus:ring-2 focus:ring-button/30"
+          >
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>
+                {y}年度{y === getCurrentFiscalYear() ? '（当年度）' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* ナビゲーション */}
       <nav className="flex-1 p-2 overflow-y-auto">

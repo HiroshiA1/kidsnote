@@ -49,6 +49,8 @@ interface AppContextType {
   addChild: (child: ChildWithGrowth) => void;
   updateChild: (child: ChildWithGrowth) => void;
   removeChild: (id: string) => void;
+  fiscalYear: number;
+  setFiscalYear: (y: number) => void;
   addStaff: (staff: Staff) => void;
   updateStaff: (staff: Staff) => void;
   selectedChildId: string | null;
@@ -105,7 +107,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     staffAttendanceData, setStaffAttendanceData,
     currentStaffId, setCurrentStaffId,
     currentUserRole,
-    demoBannerDismissed, setDemoBannerDismissed,
+    fiscalYear, setFiscalYear,
   } = useHydration();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -224,6 +226,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         addChild: addChildToStore,
         updateChild: updateChildInStore,
         removeChild: removeChildFromStore,
+        fiscalYear,
+        setFiscalYear,
         addStaff: addStaffToStore,
         updateStaff: updateStaffInStore,
         selectedChildId,
@@ -278,21 +282,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 K
               </span>
               <span className="text-sm font-bold text-headline">KidsNote</span>
-            </div>
-          )}
-          {!isLoginPage && !demoBannerDismissed && (
-            <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-sm text-amber-800">
-              <span>デモモード — データはブラウザに保存されます。本番環境ではありません</span>
-              <button
-                onClick={() => {
-                  setDemoBannerDismissed(true);
-                  sessionStorage.setItem('kidsnote_demo_dismissed', '1');
-                }}
-                className="ml-4 text-amber-600 hover:text-amber-900 font-bold"
-                aria-label="閉じる"
-              >
-                &times;
-              </button>
             </div>
           )}
           {children}

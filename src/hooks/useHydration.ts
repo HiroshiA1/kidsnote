@@ -8,6 +8,7 @@ import { ShiftPattern, ShiftAssignment, StaffAttendanceRecord } from '@/types/st
 import { sampleRules } from '@/lib/sampleRules';
 import { InputMessage } from '@/types/intent';
 import { AppRole } from '@/lib/supabase/auth';
+import { getCurrentFiscalYear } from '@/lib/fiscalYear';
 import type { Staff } from '@/components/AppLayout';
 import { initialStaff } from '@/lib/data/initialStaff';
 
@@ -31,7 +32,7 @@ export function useHydration() {
   const [staffAttendanceData, setStaffAttendanceData] = useState<StaffAttendanceRecord[]>([]);
   const [currentStaffId, setCurrentStaffId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<AppRole | null>(null);
-  const [demoBannerDismissed, setDemoBannerDismissed] = useState(false);
+  const [fiscalYear, setFiscalYear] = useState<number>(getCurrentFiscalYear());
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate from localStorage after mount
@@ -67,7 +68,8 @@ export function useHydration() {
           setCurrentUserRole(staffRoleMap[staff.role] ?? 'teacher');
         }
       }
-      setDemoBannerDismissed(sessionStorage.getItem('kidsnote_demo_dismissed') === '1');
+      const savedFy = loadFromStorage<number>(STORAGE_KEYS.fiscalYear);
+      if (typeof savedFy === 'number') setFiscalYear(savedFy);
       setHydrated(true);
     };
     hydrateAsync();
@@ -83,6 +85,7 @@ export function useHydration() {
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.shiftPatterns, shiftPatterns); }, [shiftPatterns, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.shiftAssignments, shiftAssignments); }, [shiftAssignments, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.staffAttendance, staffAttendanceData); }, [staffAttendanceData, hydrated]);
+  useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.fiscalYear, fiscalYear); }, [fiscalYear, hydrated]);
   useEffect(() => {
     if (hydrated) {
       saveToStorage(STORAGE_KEYS.currentStaffId, currentStaffId);
@@ -109,7 +112,7 @@ export function useHydration() {
     staffAttendanceData, setStaffAttendanceData,
     currentStaffId, setCurrentStaffId,
     currentUserRole,
-    demoBannerDismissed, setDemoBannerDismissed,
+    fiscalYear, setFiscalYear,
     hydrated,
   };
 }

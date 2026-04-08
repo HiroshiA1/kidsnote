@@ -7,6 +7,7 @@ import { useApp } from '@/components/AppLayout';
 import { ChildWithGrowth } from '@/lib/childrenStore';
 import { calculateAge } from '@/lib/formatters';
 import ChildCreateModal from '@/components/ChildCreateModal';
+import { getAgeInFiscalYear, getGradeInFiscalYear, isEnrolledInFiscalYear } from '@/lib/fiscalYear';
 
 type ViewMode = 'card' | 'list' | 'class-group';
 type SortKey = 'name' | 'age' | 'class' | 'grade';
@@ -26,8 +27,9 @@ function GrowthLevelBadge({ level }: { level: 1 | 2 | 3 | 4 }) {
   );
 }
 
-function ChildCard({ child }: { child: ChildWithGrowth }) {
-  const age = calculateAge(child.birthDate);
+function ChildCard({ child, fiscalYear }: { child: ChildWithGrowth; fiscalYear: number }) {
+  const age = getAgeInFiscalYear(child.birthDate, fiscalYear);
+  const grade = getGradeInFiscalYear(child.birthDate, fiscalYear);
 
   return (
     <Link href={`/children/${child.id}`}>
@@ -45,7 +47,7 @@ function ChildCard({ child }: { child: ChildWithGrowth }) {
           </div>
           <div className="flex flex-col items-end gap-1">
             <span className="text-xs px-2 py-0.5 bg-button/20 rounded-full text-button">
-              {child.grade}
+              {grade}
             </span>
             <span className="text-xs px-2 py-0.5 bg-secondary/30 rounded-full text-paragraph">
               {child.className}
@@ -84,8 +86,9 @@ function ChildCard({ child }: { child: ChildWithGrowth }) {
   );
 }
 
-function ChildListItem({ child, onDelete }: { child: ChildWithGrowth; onDelete: (child: ChildWithGrowth) => void }) {
-  const age = calculateAge(child.birthDate);
+function ChildListItem({ child, fiscalYear, onDelete }: { child: ChildWithGrowth; fiscalYear: number; onDelete: (child: ChildWithGrowth) => void }) {
+  const age = getAgeInFiscalYear(child.birthDate, fiscalYear);
+  const grade = getGradeInFiscalYear(child.birthDate, fiscalYear);
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -130,7 +133,7 @@ function ChildListItem({ child, onDelete }: { child: ChildWithGrowth; onDelete: 
           {/* 学年（タブレット以上） */}
           <div className="hidden sm:block w-16">
             <span className="text-xs px-2 py-0.5 bg-button/20 rounded-full text-button">
-              {child.grade}
+              {grade}
             </span>
           </div>
 
@@ -163,7 +166,12 @@ function ChildListItem({ child, onDelete }: { child: ChildWithGrowth; onDelete: 
 }
 
 export default function ChildrenPage() {
-  const { children: childrenData, addChild, removeChild } = useApp();
+  const { children: allChildren, addChild, removeChild, fiscalYear } = useApp();
+  // 選択年度に在園している園児のみを対象にする
+  const childrenData = useMemo(
+    () => allChildren.filter((c) => isEnrolledInFiscalYear(c.birthDate, fiscalYear)),
+    [allChildren, fiscalYear],
+  );
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -180,8 +188,8 @@ export default function ChildrenPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
   const classes = [...new Set(childrenData.map(c => c.className))];
-  const grades = [...new Set(childrenData.map(c => c.grade))];
   const gradeOrder = ['年少', '年中', '年長'];
+  const grades = gradeOrder;
 
   const filteredAndSortedChildren = useMemo(() => {
     let result = childrenData.filter(child => {
@@ -191,7 +199,8 @@ export default function ChildrenPage() {
         (child.firstNameKanji && child.firstNameKanji.includes(searchQuery)) ||
         (child.lastNameKanji && child.lastNameKanji.includes(searchQuery));
       const matchesClass = selectedClass === 'all' || child.className === selectedClass;
-      const matchesGrade = selectedGrade === 'all' || child.grade === selectedGrade;
+      const childGrade = getGradeInFiscalYear(child.birthDate, fiscalYear);
+      const matchesGrade = selectedGrade === 'all' || childGrade === selectedGrade;
       return matchesSearch && matchesClass && matchesGrade;
     });
 
@@ -208,14 +217,14 @@ export default function ChildrenPage() {
           comparison = a.className.localeCompare(b.className);
           break;
         case 'grade':
-          comparison = gradeOrder.indexOf(a.grade) - gradeOrder.indexOf(b.grade);
+          comparison = gradeOrder.indexOf(getGradeInFiscalYear(a.birthDate, fiscalYear)) - gradeOrder.indexOf(getGradeInFiscalYear(b.birthDate, fiscalYear));
           break;
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
     return result;
-  }, [childrenData, searchQuery, selectedClass, selectedGrade, sortKey, sortOrder]);
+  }, [childrenData, searchQuery, selectedClass, selectedGrade, sortKey, sortOrder, fiscalYear]);
 
   // Group children by grade → class for class-group view
   const groupedByClass = useMemo(() => {
@@ -223,7 +232,7 @@ export default function ChildrenPage() {
     const gradeMap = new Map<string, Map<string, ChildWithGrowth[]>>();
 
     for (const child of filteredAndSortedChildren) {
-      const grade = child.grade;
+      const grade = getGradeInFiscalYear(child.birthDate, fiscalYear);
       if (!gradeMap.has(grade)) gradeMap.set(grade, new Map());
       const classMap = gradeMap.get(grade)!;
       if (!classMap.has(child.className)) classMap.set(child.className, []);
@@ -256,7 +265,10 @@ export default function ChildrenPage() {
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
         <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-headline">園児一覧</h1>
+          <div>
+            <h1 className="text-xl font-bold text-headline">園児一覧</h1>
+            <p className="text-xs text-paragraph/50">{fiscalYear}年度</p>
+          </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-paragraph/60">{filteredAndSortedChildren.length}名</span>
             <button
@@ -426,7 +438,7 @@ export default function ChildrenPage() {
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         {cls.children.map(child => (
-                          <ChildCard key={child.id} child={child} />
+                          <ChildCard key={child.id} child={child} fiscalYear={fiscalYear} />
                         ))}
                       </div>
                     </div>
@@ -438,7 +450,7 @@ export default function ChildrenPage() {
         ) : viewMode === 'card' ? (
           <div className="grid gap-4 sm:grid-cols-2">
             {filteredAndSortedChildren.map(child => (
-              <ChildCard key={child.id} child={child} />
+              <ChildCard key={child.id} child={child} fiscalYear={fiscalYear} />
             ))}
           </div>
         ) : (
@@ -455,8 +467,8 @@ export default function ChildrenPage() {
               // 学年順にソートしてからクラス名順
               const gradeWeight: Record<string, number> = { '年少': 1, '年中': 2, '年長': 3 };
               const sortedGroups = [...classGroups.entries()].sort(([, a], [, b]) => {
-                const gA = gradeWeight[a[0]?.grade] ?? 0;
-                const gB = gradeWeight[b[0]?.grade] ?? 0;
+                const gA = a[0] ? gradeWeight[getGradeInFiscalYear(a[0].birthDate, fiscalYear)] ?? 0 : 0;
+                const gB = b[0] ? gradeWeight[getGradeInFiscalYear(b[0].birthDate, fiscalYear)] ?? 0 : 0;
                 if (gA !== gB) return gA - gB;
                 return a[0]?.className.localeCompare(b[0]?.className) ?? 0;
               });
@@ -472,7 +484,7 @@ export default function ChildrenPage() {
                     </div>
                     <div>
                       <h3 className="font-bold text-headline">{className}</h3>
-                      <p className="text-xs text-paragraph/50">{kids[0]?.grade} / {kids.length}名</p>
+                      <p className="text-xs text-paragraph/50">{kids[0] ? getGradeInFiscalYear(kids[0].birthDate, fiscalYear) : ''} / {kids.length}名</p>
                     </div>
                   </div>
                   {/* リストヘッダー */}
@@ -485,7 +497,7 @@ export default function ChildrenPage() {
                     <div className="w-5" />
                   </div>
                   {kids.map(child => (
-                    <ChildListItem key={child.id} child={child} onDelete={handleDelete} />
+                    <ChildListItem key={child.id} child={child} fiscalYear={fiscalYear} onDelete={handleDelete} />
                   ))}
                 </div>
               ));
