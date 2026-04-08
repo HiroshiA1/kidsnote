@@ -1,9 +1,38 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '@/components/AppLayout';
 import { CalendarEventModal } from '@/components/CalendarEventModal';
 import { CalendarEvent, CATEGORY_COLORS } from '@/types/calendar';
+import { GoogleCalendarConnect } from '@/components/GoogleCalendarConnect';
+
+// 時間軸設定
+const DAY_START_HOUR = 7;
+const DAY_END_HOUR = 20;
+const SLOT_MINUTES = 30;
+const SLOT_HEIGHT_PX = 24; // 30分 = 24px
+const TOTAL_SLOTS = (DAY_END_HOUR - DAY_START_HOUR) * (60 / SLOT_MINUTES);
+const HOURS_TOTAL_PX = TOTAL_SLOTS * SLOT_HEIGHT_PX;
+
+function parseHM(hm: string | undefined): number | null {
+  if (!hm) return null;
+  const [h, m] = hm.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function minutesToY(minutes: number): number {
+  const startMin = DAY_START_HOUR * 60;
+  return ((minutes - startMin) / SLOT_MINUTES) * SLOT_HEIGHT_PX;
+}
+
+function yToTimeString(y: number): string {
+  const rawMin = DAY_START_HOUR * 60 + Math.round(y / SLOT_HEIGHT_PX) * SLOT_MINUTES;
+  const clamped = Math.max(DAY_START_HOUR * 60, Math.min(DAY_END_HOUR * 60 - SLOT_MINUTES, rawMin));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
 
 function toDateKey(d: Date): string {
   const y = d.getFullYear();
@@ -41,6 +70,7 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(today));
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [presetTime, setPresetTime] = useState<string | null>(null);
 
   const monthGrid = useMemo(() => buildMonthGrid(cursor.getFullYear(), cursor.getMonth()), [cursor]);
   const weekGrid = useMemo(() => buildWeekGrid(cursor), [cursor]);
@@ -82,6 +112,7 @@ export default function CalendarPage() {
 
   const openCreate = (date: string) => {
     setEditingEvent(null);
+    setPresetTime(null);
     setSelectedDate(date);
     setModalOpen(true);
   };
@@ -112,12 +143,15 @@ export default function CalendarPage() {
             <h1 className="text-xl font-bold text-headline">カレンダー</h1>
             <p className="text-xs text-paragraph/50">{fiscalYear}年度・内部用</p>
           </div>
-          <button
-            onClick={() => openCreate(selectedDate)}
-            className="px-4 py-2 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90"
-          >
-            + 予定を追加
-          </button>
+          <div className="flex items-center gap-2">
+            <GoogleCalendarConnect />
+            <button
+              onClick={() => openCreate(selectedDate)}
+              className="px-4 py-2 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90"
+            >
+              + 予定を追加
+            </button>
+          </div>
         </div>
       </header>
 
@@ -147,60 +181,73 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-px bg-secondary/20 border border-secondary/20 rounded-lg overflow-hidden">
-            {weekdays.map((w, i) => (
-              <div key={w} className={`bg-surface text-center text-xs font-medium py-2 ${i === 0 ? 'text-red-600' : i === 6 ? 'text-blue-600' : 'text-paragraph/70'}`}>
-                {w}
-              </div>
-            ))}
-            {grid.map((d, idx) => {
-              const key = toDateKey(d);
-              const inMonth = view === 'week' || d.getMonth() === cursor.getMonth();
-              const isToday = toDateKey(new Date()) === key;
-              const isSelected = selectedDate === key;
-              const evs = eventsByDate[key] ?? [];
-              const dayOfWeek = d.getDay();
-              const maxShow = view === 'week' ? 12 : 3;
-              const cellMin = view === 'week' ? 'min-h-[320px]' : 'min-h-[88px]';
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedDate(key)}
-                  onDoubleClick={() => openCreate(key)}
-                  className={`bg-surface ${cellMin} p-1.5 text-left transition-colors ${
-                    inMonth ? '' : 'opacity-40'
-                  } ${isSelected ? 'ring-2 ring-button ring-inset' : 'hover:bg-secondary/10'}`}
-                >
-                  <div className={`text-xs font-medium ${
-                    isToday ? 'inline-flex items-center justify-center w-5 h-5 rounded-full bg-button text-white' :
-                    dayOfWeek === 0 ? 'text-red-600' :
-                    dayOfWeek === 6 ? 'text-blue-600' :
-                    'text-paragraph'
-                  }`}>
-                    {view === 'week' ? `${d.getMonth() + 1}/${d.getDate()}` : d.getDate()}
-                  </div>
-                  <div className="mt-1 space-y-0.5">
-                    {evs.slice(0, maxShow).map(ev => {
-                      const c = CATEGORY_COLORS[ev.category];
-                      return (
-                        <div
-                          key={ev.id}
-                          className={`text-[10px] px-1 py-0.5 rounded ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''} ${view === 'week' ? 'whitespace-normal break-words' : 'truncate'}`}
-                          title={ev.title}
-                        >
-                          {!ev.allDay && ev.startTime && <span className="mr-1">{ev.startTime}</span>}
-                          {ev.title}
-                        </div>
-                      );
-                    })}
-                    {evs.length > maxShow && (
-                      <div className="text-[10px] text-paragraph/60">+{evs.length - maxShow}件</div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {view === 'month' ? (
+            <div className="grid grid-cols-7 gap-px bg-secondary/20 border border-secondary/20 rounded-lg overflow-hidden">
+              {weekdays.map((w, i) => (
+                <div key={w} className={`bg-surface text-center text-xs font-medium py-2 ${i === 0 ? 'text-red-600' : i === 6 ? 'text-blue-600' : 'text-paragraph/70'}`}>
+                  {w}
+                </div>
+              ))}
+              {monthGrid.map((d, idx) => {
+                const key = toDateKey(d);
+                const inMonth = d.getMonth() === cursor.getMonth();
+                const isToday = toDateKey(new Date()) === key;
+                const isSelected = selectedDate === key;
+                const evs = eventsByDate[key] ?? [];
+                const dayOfWeek = d.getDay();
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedDate(key)}
+                    onDoubleClick={() => openCreate(key)}
+                    className={`bg-surface min-h-[88px] p-1.5 text-left transition-colors ${
+                      inMonth ? '' : 'opacity-40'
+                    } ${isSelected ? 'ring-2 ring-button ring-inset' : 'hover:bg-secondary/10'}`}
+                  >
+                    <div className={`text-xs font-medium ${
+                      isToday ? 'inline-flex items-center justify-center w-5 h-5 rounded-full bg-button text-white' :
+                      dayOfWeek === 0 ? 'text-red-600' :
+                      dayOfWeek === 6 ? 'text-blue-600' :
+                      'text-paragraph'
+                    }`}>
+                      {d.getDate()}
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      {evs.slice(0, 3).map(ev => {
+                        const c = CATEGORY_COLORS[ev.category];
+                        return (
+                          <div
+                            key={ev.id}
+                            className={`text-[10px] truncate px-1 py-0.5 rounded ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                            title={ev.title}
+                          >
+                            {ev.title}
+                          </div>
+                        );
+                      })}
+                      {evs.length > 3 && (
+                        <div className="text-[10px] text-paragraph/60">+{evs.length - 3}件</div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <WeekTimelineView
+              weekGrid={weekGrid}
+              eventsByDate={eventsByDate}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+              onOpenEdit={openEdit}
+              onCreateAt={(date, time) => {
+                setEditingEvent(null);
+                setSelectedDate(date);
+                setPresetTime(time);
+                setModalOpen(true);
+              }}
+            />
+          )}
 
           {/* カテゴリ凡例 */}
           <div className="mt-4 flex flex-wrap gap-2">
@@ -269,8 +316,237 @@ export default function CalendarPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         initialDate={selectedDate}
+        initialStartTime={presetTime ?? undefined}
         event={editingEvent}
       />
+    </div>
+  );
+}
+
+/** 週ビュー（時間軸付き） */
+function WeekTimelineView({
+  weekGrid,
+  eventsByDate,
+  selectedDate,
+  onSelectDate,
+  onOpenEdit,
+  onCreateAt,
+}: {
+  weekGrid: Date[];
+  eventsByDate: Record<string, CalendarEvent[]>;
+  selectedDate: string;
+  onSelectDate: (d: string) => void;
+  onOpenEdit: (ev: CalendarEvent) => void;
+  onCreateAt: (date: string, time: string) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [nowMin, setNowMin] = useState(() => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  });
+
+  useEffect(() => {
+    // 初期スクロール位置: 8:00 付近
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = minutesToY(8 * 60) - 20;
+    }
+    const id = setInterval(() => {
+      const n = new Date();
+      setNowMin(n.getHours() * 60 + n.getMinutes());
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+  const todayKey = toDateKey(new Date());
+
+  // 各日のイベントを all-day と timed に分割
+  const splitEvents = (dateKey: string) => {
+    const evs = eventsByDate[dateKey] ?? [];
+    const allDay: CalendarEvent[] = [];
+    const timed: CalendarEvent[] = [];
+    for (const e of evs) {
+      if (e.allDay || !e.startTime) allDay.push(e);
+      else timed.push(e);
+    }
+    return { allDay, timed };
+  };
+
+  const maxAllDay = Math.max(1, ...weekGrid.map(d => splitEvents(toDateKey(d)).allDay.length));
+
+  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>, dateKey: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const time = yToTimeString(y);
+    onCreateAt(dateKey, time);
+  };
+
+  return (
+    <div className="border border-secondary/20 rounded-lg overflow-hidden">
+      {/* ヘッダー: 曜日 */}
+      <div className="grid" style={{ gridTemplateColumns: '48px repeat(7, 1fr)' }}>
+        <div className="bg-surface border-b border-secondary/20" />
+        {weekGrid.map((d, i) => {
+          const key = toDateKey(d);
+          const isToday = todayKey === key;
+          const isSelected = selectedDate === key;
+          const dow = d.getDay();
+          return (
+            <button
+              key={i}
+              onClick={() => onSelectDate(key)}
+              className={`bg-surface border-b border-l border-secondary/20 py-2 text-center transition-colors ${
+                isSelected ? 'bg-button/10' : 'hover:bg-secondary/10'
+              }`}
+            >
+              <div className={`text-[10px] ${dow === 0 ? 'text-red-600' : dow === 6 ? 'text-blue-600' : 'text-paragraph/60'}`}>
+                {weekdays[dow]}
+              </div>
+              <div className={`text-sm font-bold ${
+                isToday ? 'inline-flex items-center justify-center w-6 h-6 rounded-full bg-button text-white mt-0.5' : 'text-headline'
+              }`}>
+                {d.getDate()}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 終日イベント行 */}
+      <div
+        className="grid border-b border-secondary/20"
+        style={{ gridTemplateColumns: '48px repeat(7, 1fr)', minHeight: `${Math.max(maxAllDay, 1) * 20 + 8}px` }}
+      >
+        <div className="text-[9px] text-paragraph/50 text-right pr-1 pt-1">終日</div>
+        {weekGrid.map((d, i) => {
+          const key = toDateKey(d);
+          const { allDay } = splitEvents(key);
+          return (
+            <div key={i} className="border-l border-secondary/20 p-0.5 space-y-0.5">
+              {allDay.map(ev => {
+                const c = CATEGORY_COLORS[ev.category];
+                return (
+                  <button
+                    key={ev.id}
+                    onClick={() => onOpenEdit(ev)}
+                    className={`block w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                    title={ev.title}
+                  >
+                    {ev.title}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 時間軸本体 */}
+      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: '560px' }}>
+        <div className="grid relative" style={{ gridTemplateColumns: '48px repeat(7, 1fr)', height: `${HOURS_TOTAL_PX}px` }}>
+          {/* 時刻ラベル列 */}
+          <div className="relative">
+            {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => {
+              const h = DAY_START_HOUR + i;
+              return (
+                <div
+                  key={h}
+                  className="absolute right-1 text-[10px] text-paragraph/50 -translate-y-1/2"
+                  style={{ top: `${minutesToY(h * 60)}px` }}
+                >
+                  {h}:00
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 各曜日カラム */}
+          {weekGrid.map((d, dayIdx) => {
+            const key = toDateKey(d);
+            const isToday = todayKey === key;
+            const { timed } = splitEvents(key);
+            // 重なり処理: 簡易的に開始時刻順に並べ、overlap で横並び
+            const sorted = [...timed].sort((a, b) => (parseHM(a.startTime) ?? 0) - (parseHM(b.startTime) ?? 0));
+            // グループ化
+            const groups: CalendarEvent[][] = [];
+            for (const ev of sorted) {
+              const start = parseHM(ev.startTime) ?? 0;
+              const end = parseHM(ev.endTime) ?? start + 30;
+              let placed = false;
+              for (const g of groups) {
+                const lastEnd = Math.max(...g.map(x => parseHM(x.endTime) ?? (parseHM(x.startTime) ?? 0) + 30));
+                const firstStart = Math.min(...g.map(x => parseHM(x.startTime) ?? 0));
+                if (start < lastEnd && end > firstStart) {
+                  g.push(ev);
+                  placed = true;
+                  break;
+                }
+              }
+              if (!placed) groups.push([ev]);
+            }
+            const positions = new Map<string, { col: number; colSpan: number }>();
+            for (const g of groups) {
+              g.forEach((ev, i) => positions.set(ev.id, { col: i, colSpan: g.length }));
+            }
+
+            return (
+              <div
+                key={dayIdx}
+                className={`relative border-l border-secondary/20 cursor-crosshair ${isToday ? 'bg-button/5' : ''}`}
+                onClick={(e) => handleTimelineClick(e, key)}
+              >
+                {/* 30分グリッド線 */}
+                {Array.from({ length: TOTAL_SLOTS }, (_, i) => (
+                  <div
+                    key={i}
+                    className={`absolute left-0 right-0 ${i % 2 === 0 ? 'border-t border-secondary/20' : 'border-t border-secondary/10'}`}
+                    style={{ top: `${i * SLOT_HEIGHT_PX}px` }}
+                  />
+                ))}
+                {/* 現在時刻線 */}
+                {isToday && nowMin >= DAY_START_HOUR * 60 && nowMin <= DAY_END_HOUR * 60 && (
+                  <div
+                    className="absolute left-0 right-0 z-20 pointer-events-none"
+                    style={{ top: `${minutesToY(nowMin)}px` }}
+                  >
+                    <div className="h-px bg-red-500" />
+                    <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-red-500" />
+                  </div>
+                )}
+                {/* イベント */}
+                {timed.map(ev => {
+                  const start = parseHM(ev.startTime);
+                  if (start === null) return null;
+                  const end = parseHM(ev.endTime) ?? start + 30;
+                  const top = Math.max(0, minutesToY(start));
+                  const height = Math.max(SLOT_HEIGHT_PX - 2, minutesToY(end) - minutesToY(start) - 2);
+                  const pos = positions.get(ev.id) ?? { col: 0, colSpan: 1 };
+                  const widthPct = 100 / pos.colSpan;
+                  const leftPct = widthPct * pos.col;
+                  const c = CATEGORY_COLORS[ev.category];
+                  return (
+                    <button
+                      key={ev.id}
+                      onClick={(e) => { e.stopPropagation(); onOpenEdit(ev); }}
+                      className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[10px] shadow-sm ${c.bg} ${c.text} border border-white ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                      style={{
+                        top: `${top}px`,
+                        height: `${height}px`,
+                        left: `calc(${leftPct}% + 2px)`,
+                        width: `calc(${widthPct}% - 4px)`,
+                        zIndex: 10,
+                      }}
+                      title={`${ev.startTime ?? ''}${ev.endTime ? '-' + ev.endTime : ''} ${ev.title}`}
+                    >
+                      <div className="font-medium truncate">{ev.startTime} {ev.title}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

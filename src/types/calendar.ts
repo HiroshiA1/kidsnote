@@ -63,4 +63,6 @@ export interface CalendarEvent {
   fiscalYear: number;
   createdAt: string;
   updatedAt: string;
+  /** Google Calendar 連携でのイベント ID */
+  googleEventId?: string;
 }

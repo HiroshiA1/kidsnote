@@ -9,21 +9,33 @@ import {
   EventStatus,
   VisibilityScope,
 } from '@/types/calendar';
+import { isConnected as isGoogleConnected, pushEventToGoogle, updateGoogleEvent, deleteGoogleEvent } from '@/lib/googleCalendar';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   initialDate?: string;
+  initialStartTime?: string;
   event?: CalendarEvent | null;
 }
 
-function emptyEvent(date: string, fiscalYear: number): CalendarEvent {
+function addMinutes(hm: string, delta: number): string {
+  const [h, m] = hm.split(':').map(Number);
+  const total = h * 60 + m + delta;
+  const nh = Math.floor(total / 60) % 24;
+  const nm = total % 60;
+  return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
+}
+
+function emptyEvent(date: string, fiscalYear: number, startTime?: string): CalendarEvent {
   const now = new Date().toISOString();
   return {
     id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     title: '',
     date,
-    allDay: true,
+    allDay: !startTime,
+    startTime: startTime,
+    endTime: startTime ? addMinutes(startTime, 60) : undefined,
     category: '行事',
     status: 'scheduled',
     visibilityScope: 'all_staff',
@@ -33,17 +45,17 @@ function emptyEvent(date: string, fiscalYear: number): CalendarEvent {
   };
 }
 
-export function CalendarEventModal({ open, onClose, initialDate, event }: Props) {
-  const { addCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fiscalYear, staff, settings, children: childrenData, currentStaffId } = useApp();
+export function CalendarEventModal({ open, onClose, initialDate, initialStartTime, event }: Props) {
+  const { addCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fiscalYear, staff, settings, children: childrenData, currentStaffId, addToast } = useApp();
   const [form, setForm] = useState<CalendarEvent>(() =>
-    event ?? emptyEvent(initialDate ?? new Date().toISOString().slice(0, 10), fiscalYear)
+    event ?? emptyEvent(initialDate ?? new Date().toISOString().slice(0, 10), fiscalYear, initialStartTime)
   );
 
   useEffect(() => {
     if (open) {
-      setForm(event ?? emptyEvent(initialDate ?? new Date().toISOString().slice(0, 10), fiscalYear));
+      setForm(event ?? emptyEvent(initialDate ?? new Date().toISOString().slice(0, 10), fiscalYear, initialStartTime));
     }
-  }, [open, event, initialDate, fiscalYear]);
+  }, [open, event, initialDate, initialStartTime, fiscalYear]);
 
   if (!open) return null;
 
@@ -53,12 +65,25 @@ export function CalendarEventModal({ open, onClose, initialDate, event }: Props)
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.title.trim()) {
       alert('タイトルを入力してください');
       return;
     }
-    const payload = { ...form, updatedAt: new Date().toISOString(), ownerStaffId: form.ownerStaffId ?? currentStaffId ?? undefined };
+    const payload: CalendarEvent = { ...form, updatedAt: new Date().toISOString(), ownerStaffId: form.ownerStaffId ?? currentStaffId ?? undefined };
+    // Google Calendar 連携（接続中のみ）
+    if (isGoogleConnected()) {
+      try {
+        if (isEdit && payload.googleEventId) {
+          await updateGoogleEvent(payload, payload.googleEventId);
+        } else {
+          const gid = await pushEventToGoogle(payload);
+          payload.googleEventId = gid;
+        }
+      } catch (e) {
+        addToast({ type: 'error', message: `Google同期失敗: ${(e as Error).message}` });
+      }
+    }
     if (isEdit) {
       updateCalendarEvent(payload);
     } else {
@@ -67,12 +92,18 @@ export function CalendarEventModal({ open, onClose, initialDate, event }: Props)
     onClose();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!event) return;
-    if (confirm('この予定を削除しますか？')) {
-      deleteCalendarEvent(event.id);
-      onClose();
+    if (!confirm('この予定を削除しますか？')) return;
+    if (event.googleEventId && isGoogleConnected()) {
+      try {
+        await deleteGoogleEvent(event.googleEventId);
+      } catch (e) {
+        addToast({ type: 'error', message: `Google削除失敗: ${(e as Error).message}` });
+      }
     }
+    deleteCalendarEvent(event.id);
+    onClose();
   };
 
   const classes = settings.classes ?? [];
