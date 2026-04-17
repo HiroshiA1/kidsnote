@@ -11,7 +11,7 @@ import { AppRole } from '@/lib/supabase/auth';
 import { getCurrentFiscalYear } from '@/lib/fiscalYear';
 import type { Staff } from '@/components/AppLayout';
 import { initialStaff } from '@/lib/data/initialStaff';
-import { CalendarEvent } from '@/types/calendar';
+import { CalendarEvent, SupportAssignment } from '@/types/calendar';
 
 const staffRoleMap: Record<string, AppRole> = {
   '園長': 'admin',
@@ -35,6 +35,7 @@ export function useHydration() {
   const [currentUserRole, setCurrentUserRole] = useState<AppRole | null>(null);
   const [fiscalYear, setFiscalYear] = useState<number>(getCurrentFiscalYear());
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [supportAssignments, setSupportAssignments] = useState<SupportAssignment[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate from localStorage after mount
@@ -60,6 +61,7 @@ export function useHydration() {
       setShiftPatterns(loadFromStorage<ShiftPattern[]>(STORAGE_KEYS.shiftPatterns) ?? []);
       setShiftAssignments(loadFromStorage<ShiftAssignment[]>(STORAGE_KEYS.shiftAssignments) ?? []);
       setCalendarEvents(loadFromStorage<CalendarEvent[]>(STORAGE_KEYS.calendarEvents) ?? []);
+      setSupportAssignments(loadFromStorage<SupportAssignment[]>(STORAGE_KEYS.supportAssignments) ?? []);
 
       const savedStaffId = loadFromStorage<string>(STORAGE_KEYS.currentStaffId) ?? null;
       setCurrentStaffId(savedStaffId);
@@ -90,6 +92,7 @@ export function useHydration() {
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.staffAttendance, staffAttendanceData); }, [staffAttendanceData, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.fiscalYear, fiscalYear); }, [fiscalYear, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.calendarEvents, calendarEvents); }, [calendarEvents, hydrated]);
+  useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.supportAssignments, supportAssignments); }, [supportAssignments, hydrated]);
   useEffect(() => {
     if (hydrated) {
       saveToStorage(STORAGE_KEYS.currentStaffId, currentStaffId);
@@ -118,6 +121,7 @@ export function useHydration() {
     currentUserRole,
     fiscalYear, setFiscalYear,
     calendarEvents, setCalendarEvents,
+    supportAssignments, setSupportAssignments,
     hydrated,
   };
 }

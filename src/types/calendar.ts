@@ -66,3 +66,18 @@ export interface CalendarEvent {
   /** Google Calendar 連携でのイベント ID */
   googleEventId?: string;
 }
+
+export interface SupportAssignment {
+  id: string;
+  /** ISO date (YYYY-MM-DD) */
+  date: string;
+  staffId: string;
+  targetClassId: string;
+  /** HH:mm */
+  startTime: string;
+  /** HH:mm */
+  endTime: string;
+  taskDescription: string;
+  createdAt: string;
+  updatedAt: string;
+}

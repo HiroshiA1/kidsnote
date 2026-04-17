@@ -6,8 +6,9 @@ import { useParams } from 'next/navigation';
 import { useApp, Staff } from '@/components/AppLayout';
 import { calculateYearsOfService } from '@/lib/formatters';
 import { hasMinRole } from '@/lib/supabase/auth';
+import { defaultStaffRoleConfigs } from '@/types/settings';
 
-const roleColors: Record<Staff['role'], string> = {
+const defaultRoleColors: Record<string, string> = {
   '園長': 'bg-button text-white',
   '主任': 'bg-tertiary text-headline',
   '担任': 'bg-secondary text-headline',
@@ -15,8 +16,12 @@ const roleColors: Record<Staff['role'], string> = {
   'パート': 'bg-paragraph/20 text-paragraph',
 };
 
+function getRoleColor(role: string): string {
+  return defaultRoleColors[role] ?? 'bg-paragraph/10 text-paragraph';
+}
+
 /** 職員編集モーダル */
-function StaffEditModal({ staff, onSave, onClose }: { staff: Staff; onSave: (s: Staff) => void; onClose: () => void }) {
+function StaffEditModal({ staff, onSave, onClose, roleNames }: { staff: Staff; onSave: (s: Staff) => void; onClose: () => void; roleNames: string[] }) {
   const [form, setForm] = useState({
     firstName: staff.firstName,
     lastName: staff.lastName,
@@ -65,12 +70,10 @@ function StaffEditModal({ staff, onSave, onClose }: { staff: Staff; onSave: (s: 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>役職</label>
-              <select className={inputClass} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as Staff['role'] }))}>
-                <option value="園長">園長</option>
-                <option value="主任">主任</option>
-                <option value="担任">担任</option>
-                <option value="副担任">副担任</option>
-                <option value="パート">パート</option>
+              <select className={inputClass} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                {roleNames.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -209,7 +212,9 @@ function AccountCreateModal({ staff, onCreated, onClose }: { staff: Staff; onCre
 
 export default function StaffDetailPage() {
   const params = useParams();
-  const { staff: staffData, updateStaff, currentUserRole, addToast } = useApp();
+  const { staff: staffData, updateStaff, currentUserRole, addToast, settings } = useApp();
+  const roleConfigs = settings.staffRoleConfigs ?? defaultStaffRoleConfigs;
+  const roleNames = roleConfigs.map(r => r.name);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
 
@@ -260,6 +265,7 @@ export default function StaffDetailPage() {
       {showEditModal && (
         <StaffEditModal
           staff={staff}
+          roleNames={roleNames}
           onSave={(updated) => {
             updateStaff(updated);
             setShowEditModal(false);
@@ -287,7 +293,7 @@ export default function StaffDetailPage() {
             <div className="flex-1">
               <h2 className="text-3xl font-bold text-headline">{staff.lastName} {staff.firstName}</h2>
               <div className="flex items-center gap-2 mt-1">
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${roleColors[staff.role]}`}>{staff.role}</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleColor(staff.role)}`}>{staff.role}</span>
                 {staff.classAssignment && (
                   <span className="text-sm text-paragraph/60">{staff.classAssignment}</span>
                 )}

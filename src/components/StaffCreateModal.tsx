@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useApp } from './AppLayout';
+import { defaultStaffRoleConfigs } from '@/types/settings';
 
 interface Props {
   open: boolean;
@@ -8,12 +10,14 @@ interface Props {
   onCreated: () => void;
 }
 
-const ROLES = ['園長', '主任', '担任', '副担任', 'パート'] as const;
-
 export default function StaffCreateModal({ open, onClose, onCreated }: Props) {
+  const { settings } = useApp();
+  const roleConfigs = settings.staffRoleConfigs ?? defaultStaffRoleConfigs;
+  const roleNames = roleConfigs.map(r => r.name);
+
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
-  const [role, setRole] = useState<(typeof ROLES)[number]>('担任');
+  const [role, setRole] = useState(roleNames[2] ?? '担任');
   const [classAssignment, setClassAssignment] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,7 +31,7 @@ export default function StaffCreateModal({ open, onClose, onCreated }: Props) {
   const reset = () => {
     setLastName('');
     setFirstName('');
-    setRole('担任');
+    setRole(roleNames[2] ?? '担任');
     setClassAssignment('');
     setEmail('');
     setPassword('');
@@ -104,10 +108,10 @@ export default function StaffCreateModal({ open, onClose, onCreated }: Props) {
             <label className="block text-xs text-paragraph/70 mb-1">役職 *</label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
+              onChange={(e) => setRole(e.target.value)}
               className="w-full px-3 py-2 border border-secondary/30 rounded-lg text-paragraph"
             >
-              {ROLES.map((r) => (
+              {roleNames.map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>

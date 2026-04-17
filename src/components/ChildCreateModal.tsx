@@ -10,7 +10,7 @@ interface Props {
   onCreate: (child: ChildWithGrowth) => void;
 }
 
-const GRADES = ['年少', '年中', '年長'] as const;
+const GRADES = ['未就園児', '満3歳児', '年少', '年中', '年長'] as const;
 
 const DEFAULT_DOMAINS: GrowthDomain[] = [
   'health',

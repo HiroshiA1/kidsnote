@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '@/components/AppLayout';
 import { defaultClasses } from '@/types/settings';
 
@@ -25,6 +25,24 @@ interface CurriculumPlan {
   createdAt: Date;
   updatedAt: Date;
 }
+
+type PrintType = 'daily-week' | 'daily-allclass' | 'weekly-month' | 'weekly-allclass' | 'monthly-allclass' | 'monthly-year';
+
+interface PrintConfig {
+  type: PrintType;
+  classId?: string;
+  date?: string;
+  week?: string;
+}
+
+const PRINT_LABELS: Record<PrintType, string> = {
+  'daily-week': '各クラスの1週間（日案）',
+  'daily-allclass': '1日の各クラス全体（日案）',
+  'weekly-month': '1クラスの1ヶ月分（週案）',
+  'weekly-allclass': '各クラスの週案',
+  'monthly-allclass': '当月の各クラス一覧（月案）',
+  'monthly-year': '1クラスの1年間分（月案）',
+};
 
 const LEVEL_LABELS: Record<PlanLevel, string> = {
   annual: '年間計画',
@@ -313,6 +331,469 @@ function DetailSection({ icon, title, color, children }: {
   );
 }
 
+// ── 印刷テーブル行のフィールド定義 ─────────────
+const PRINT_ROW_FIELDS: { key: keyof CurriculumPlan; label: string }[] = [
+  { key: 'objectives', label: 'ねらい' },
+  { key: 'content', label: '内容' },
+  { key: 'childrenActivities', label: '子どもの活動' },
+  { key: 'teacherSupport', label: '保育者の援助' },
+  { key: 'environment', label: '環境構成' },
+  { key: 'evaluation', label: '評価' },
+];
+
+function renderPlanCell(plan: CurriculumPlan | undefined, field: keyof CurriculumPlan) {
+  if (!plan) return <td className="text-gray-300 text-center">-</td>;
+  const value = plan[field];
+  if (Array.isArray(value)) {
+    const items = value.filter(Boolean);
+    return <td>{items.length > 0 ? items.map((v, i) => <div key={i}>{v}</div>) : '-'}</td>;
+  }
+  return <td>{(value as string) || '-'}</td>;
+}
+
+// ── 印刷形式選択モーダル ──────────────────────────
+function PrintSetupModal({
+  classes,
+  onClose,
+  onPreview
+}: {
+  classes: { id: string; name: string }[];
+  onClose: () => void;
+  onPreview: (config: PrintConfig) => void;
+}) {
+  const [step, setStep] = useState(1);
+  const [level, setLevel] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [format, setFormat] = useState<PrintType | null>(null);
+  const [classId, setClassId] = useState(classes[0]?.id ?? '');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+
+  const levelOptions: { key: 'daily' | 'weekly' | 'monthly'; label: string; icon: string }[] = [
+    { key: 'daily', label: '日案', icon: '📝' },
+    { key: 'weekly', label: '週案', icon: '📋' },
+    { key: 'monthly', label: '月案', icon: '📅' },
+  ];
+
+  const formatOptions: Record<'daily' | 'weekly' | 'monthly', { type: PrintType; label: string; desc: string }[]> = {
+    daily: [
+      { type: 'daily-week', label: '各クラスの1週間', desc: '1クラスの月〜日の日案をテーブル表示' },
+      { type: 'daily-allclass', label: '1日の各クラス全体', desc: '特定日の全クラスの日案を一覧表示' },
+    ],
+    weekly: [
+      { type: 'weekly-month', label: '1クラスの1ヶ月分', desc: '1クラスの4〜5週分の週案をテーブル表示' },
+      { type: 'weekly-allclass', label: '各クラスの週案', desc: '特定週の全クラス週案を一覧表示' },
+    ],
+    monthly: [
+      { type: 'monthly-allclass', label: '当月の各クラス一覧', desc: '今月の全クラス月案をグリッド表示' },
+      { type: 'monthly-year', label: '1クラスの1年間分', desc: '1クラスの12ヶ月分の月案をテーブル表示' },
+    ],
+  };
+
+  const needsClass = format === 'daily-week' || format === 'weekly-month' || format === 'monthly-year';
+  const needsDate = format === 'daily-allclass' || format === 'weekly-allclass';
+
+  const handlePreview = () => {
+    if (!format) return;
+    const config: PrintConfig = { type: format };
+    if (needsClass) config.classId = classId;
+    if (needsDate) config.date = date;
+    onPreview(config);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-surface rounded-xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-6 pb-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-headline">印刷形式の選択</h3>
+            <button onClick={onClose} className="p-1.5 hover:bg-secondary/20 rounded-lg text-paragraph/60 transition-colors">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+
+          {/* Step indicators */}
+          <div className="flex items-center gap-2 mb-5">
+            {[1, 2, 3].map(s => (
+              <div key={s} className="flex items-center gap-2">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                  step >= s ? 'bg-button text-white' : 'bg-secondary/20 text-paragraph/40'
+                }`}>{s}</div>
+                {s < 3 && <div className={`w-8 h-0.5 ${step > s ? 'bg-button' : 'bg-secondary/20'}`} />}
+              </div>
+            ))}
+            <span className="text-xs text-paragraph/50 ml-2">
+              {step === 1 ? 'レベル選択' : step === 2 ? '形式選択' : '対象選択'}
+            </span>
+          </div>
+        </div>
+
+        <div className="px-6 pb-6 space-y-4">
+          {step === 1 && (
+            <div className="grid grid-cols-3 gap-3">
+              {levelOptions.map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => { setLevel(opt.key); setFormat(null); setStep(2); }}
+                  className={`p-4 rounded-xl border-2 text-center transition-all hover:shadow-md ${
+                    level === opt.key ? 'border-button bg-button/5' : 'border-secondary/20 hover:border-secondary/40'
+                  }`}
+                >
+                  <div className="text-2xl mb-2">{opt.icon}</div>
+                  <div className="text-sm font-bold text-headline">{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-3">
+              <button onClick={() => setStep(1)} className="text-xs text-button hover:text-button/80 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                レベル選択に戻る
+              </button>
+              {formatOptions[level].map(opt => (
+                <button
+                  key={opt.type}
+                  onClick={() => { setFormat(opt.type); setStep(3); }}
+                  className={`w-full p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${
+                    format === opt.type ? 'border-button bg-button/5' : 'border-secondary/20 hover:border-secondary/40'
+                  }`}
+                >
+                  <div className="text-sm font-bold text-headline mb-1">{opt.label}</div>
+                  <div className="text-xs text-paragraph/60">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 3 && format && (
+            <div className="space-y-4">
+              <button onClick={() => setStep(2)} className="text-xs text-button hover:text-button/80 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                形式選択に戻る
+              </button>
+
+              <div className="p-3 bg-button/5 border border-button/20 rounded-lg">
+                <p className="text-xs text-paragraph/60">選択された形式</p>
+                <p className="text-sm font-bold text-headline">{PRINT_LABELS[format]}</p>
+              </div>
+
+              {needsClass && (
+                <div>
+                  <label className="block text-sm font-medium text-paragraph/80 mb-1">クラスを選択</label>
+                  <select value={classId} onChange={e => setClassId(e.target.value)} className="w-full px-3 py-2 border border-secondary/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-button/40">
+                    {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {needsDate && (
+                <div>
+                  <label className="block text-sm font-medium text-paragraph/80 mb-1">日付を選択</label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 border border-secondary/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-button/40" />
+                </div>
+              )}
+
+              <button
+                onClick={handlePreview}
+                className="w-full px-4 py-2.5 bg-button text-white rounded-lg text-sm hover:bg-button/90 transition-all font-medium flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                プレビュー表示
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 印刷プレビュー ──────────────────────────────
+function PrintPreview({
+  config,
+  plans,
+  classes,
+  onClose,
+}: {
+  config: PrintConfig;
+  plans: CurriculumPlan[];
+  classes: { id: string; name: string; color?: string }[];
+  onClose: () => void;
+}) {
+  const getClassName = (classId: string) => classes.find(c => c.id === classId)?.name ?? classId;
+  const now = new Date();
+  const today = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const handlePrint = () => window.print();
+
+  // Helper: get date range for a week
+  const getWeekDates = (baseDate: string) => {
+    const d = new Date(baseDate);
+    const day = d.getDay();
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + i);
+      return date;
+    });
+  };
+
+  // Helper: get weeks of a month
+  const getMonthWeeks = () => {
+    const weeks: string[] = [];
+    for (let w = 1; w <= 5; w++) {
+      weeks.push(`第${w}週`);
+    }
+    return weeks;
+  };
+
+  // Helper: get months of a year
+  const getYearMonths = () => {
+    const months: string[] = [];
+    const fiscalStart = 4;
+    for (let i = 0; i < 12; i++) {
+      const m = ((fiscalStart - 1 + i) % 12) + 1;
+      months.push(`${m}月`);
+    }
+    return months;
+  };
+
+  // Find plans for print type
+  const findPlan = (level: PlanLevel, classId: string, period?: string) => {
+    return plans.find(p => p.level === level && p.classId === classId && (!period || p.period === period));
+  };
+
+  const renderTable = () => {
+    switch (config.type) {
+      case 'daily-week': {
+        const cls = config.classId!;
+        const dates = config.date ? getWeekDates(config.date) : getWeekDates(now.toISOString().slice(0, 10));
+        const dayLabels = ['月', '火', '水', '木', '金', '土', '日'];
+        const dailyPlans = dates.map((_, i) => findPlan('daily', cls));
+        return (
+          <div>
+            <h2 className="text-lg font-bold mb-1">{getClassName(cls)} - 日案（1週間）</h2>
+            <p className="text-xs text-gray-500 mb-3">印刷日: {today}</p>
+            <table className="print-table w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="w-24">項目</th>
+                  {dayLabels.map((d, i) => (
+                    <th key={i}>{d}<br/><span className="text-[10px] font-normal">{dates[i].getMonth()+1}/{dates[i].getDate()}</span></th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {PRINT_ROW_FIELDS.map(field => (
+                  <tr key={field.key}>
+                    <td className="font-medium bg-gray-50">{field.label}</td>
+                    {dailyPlans.map((plan, i) => (
+                      <React.Fragment key={i}>
+                        {renderPlanCell(plan, field.key)}
+                      </React.Fragment>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      case 'daily-allclass': {
+        const dateStr = config.date ?? now.toISOString().slice(0, 10);
+        const d = new Date(dateStr);
+        const label = d.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
+        return (
+          <div>
+            <h2 className="text-lg font-bold mb-1">{label} - 全クラス日案</h2>
+            <p className="text-xs text-gray-500 mb-3">印刷日: {today}</p>
+            <table className="print-table w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="w-24">項目</th>
+                  {classes.map(cls => <th key={cls.id}>{cls.name}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {PRINT_ROW_FIELDS.map(field => (
+                  <tr key={field.key}>
+                    <td className="font-medium bg-gray-50">{field.label}</td>
+                    {classes.map(cls => {
+                      const plan = findPlan('daily', cls.id);
+                      return <React.Fragment key={cls.id}>{renderPlanCell(plan, field.key)}</React.Fragment>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      case 'weekly-month': {
+        const cls = config.classId!;
+        const weeks = getMonthWeeks();
+        const currentMonth = `${now.getMonth() + 1}月`;
+        return (
+          <div>
+            <h2 className="text-lg font-bold mb-1">{getClassName(cls)} - 週案（{currentMonth}）</h2>
+            <p className="text-xs text-gray-500 mb-3">印刷日: {today}</p>
+            <table className="print-table w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="w-24">項目</th>
+                  {weeks.map(w => <th key={w}>{currentMonth}{w}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {PRINT_ROW_FIELDS.map(field => (
+                  <tr key={field.key}>
+                    <td className="font-medium bg-gray-50">{field.label}</td>
+                    {weeks.map(w => {
+                      const plan = findPlan('weekly', cls, `${currentMonth}${w}`);
+                      return <React.Fragment key={w}>{renderPlanCell(plan, field.key)}</React.Fragment>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      case 'weekly-allclass': {
+        const currentWeek = `${now.getMonth() + 1}月第3週`;
+        return (
+          <div>
+            <h2 className="text-lg font-bold mb-1">{currentWeek} - 全クラス週案</h2>
+            <p className="text-xs text-gray-500 mb-3">印刷日: {today}</p>
+            <table className="print-table w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="w-24">項目</th>
+                  {classes.map(cls => <th key={cls.id}>{cls.name}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {PRINT_ROW_FIELDS.map(field => (
+                  <tr key={field.key}>
+                    <td className="font-medium bg-gray-50">{field.label}</td>
+                    {classes.map(cls => {
+                      const plan = findPlan('weekly', cls.id);
+                      return <React.Fragment key={cls.id}>{renderPlanCell(plan, field.key)}</React.Fragment>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      case 'monthly-allclass': {
+        const currentMonth = `${now.getMonth() + 1}月`;
+        return (
+          <div>
+            <h2 className="text-lg font-bold mb-1">{currentMonth} - 全クラス月案一覧</h2>
+            <p className="text-xs text-gray-500 mb-3">印刷日: {today}</p>
+            <div className="grid grid-cols-2 gap-4">
+              {classes.map(cls => {
+                const plan = findPlan('monthly', cls.id);
+                return (
+                  <div key={cls.id} className="border border-gray-300 rounded p-3">
+                    <h3 className="font-bold text-sm mb-2 pb-1 border-b border-gray-200">{cls.name}</h3>
+                    {plan ? (
+                      <div className="space-y-1.5 text-xs">
+                        {PRINT_ROW_FIELDS.map(field => {
+                          const value = plan[field.key];
+                          const display = Array.isArray(value) ? value.filter(Boolean).join('、') : (value as string);
+                          if (!display) return null;
+                          return (
+                            <div key={field.key}>
+                              <span className="font-medium text-gray-600">{field.label}: </span>
+                              <span>{display}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400">データなし</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      case 'monthly-year': {
+        const cls = config.classId!;
+        const months = getYearMonths();
+        return (
+          <div>
+            <h2 className="text-lg font-bold mb-1">{getClassName(cls)} - 月案（年間）</h2>
+            <p className="text-xs text-gray-500 mb-3">印刷日: {today}</p>
+            <table className="print-table w-full border-collapse text-[10px]">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="w-20">項目</th>
+                  {months.map(m => <th key={m}>{m}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {PRINT_ROW_FIELDS.map(field => (
+                  <tr key={field.key}>
+                    <td className="font-medium bg-gray-50">{field.label}</td>
+                    {months.map(m => {
+                      const plan = findPlan('monthly', cls, m);
+                      return <React.Fragment key={m}>{renderPlanCell(plan, field.key)}</React.Fragment>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white">
+      {/* Toolbar - hidden in print */}
+      <div className="no-print sticky top-0 z-10 bg-surface border-b border-secondary/20 px-6 py-3 flex items-center justify-between">
+        <button onClick={onClose} className="flex items-center gap-2 text-sm text-paragraph hover:text-headline transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          戻る
+        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-paragraph/50">{PRINT_LABELS[config.type]}</span>
+          <button onClick={handlePrint} className="px-4 py-2 bg-button text-white rounded-lg text-sm hover:bg-button/90 transition-all flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+            </svg>
+            印刷
+          </button>
+        </div>
+      </div>
+
+      {/* Print content */}
+      <div className="print-content p-6 max-w-[1100px] mx-auto">
+        {renderTable()}
+      </div>
+    </div>
+  );
+}
+
 // ========== メインページ ==========
 export default function CurriculumPage() {
   const { staff, settings } = useApp();
@@ -341,6 +822,8 @@ export default function CurriculumPage() {
   const [copyPreview, setCopyPreview] = useState<CurriculumPlan | null>(null);
   const [newModalTab, setNewModalTab] = useState<'template' | 'copy'>('template');
   const [copySourceId, setCopySourceId] = useState<string>('');
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printMode, setPrintMode] = useState<PrintConfig | null>(null);
 
   const filteredPlans = plans.filter(p => {
     if (selectedLevel !== 'all' && p.level !== selectedLevel) return false;
@@ -487,6 +970,17 @@ export default function CurriculumPage() {
     { key: 'daily', label: '日案' },
   ];
 
+  if (printMode) {
+    return (
+      <PrintPreview
+        config={printMode}
+        plans={plans}
+        classes={classes}
+        onClose={() => setPrintMode(null)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
@@ -504,6 +998,15 @@ export default function CurriculumPage() {
                   締切間近 {deadlineSoonCount}件
                 </span>
               )}
+              <button
+                onClick={() => setShowPrintModal(true)}
+                className="px-4 py-2 border border-secondary/30 text-paragraph rounded-lg text-sm hover:bg-secondary/10 transition-all flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+                </svg>
+                印刷
+              </button>
               <button
                 onClick={() => setShowNewModal(true)}
                 className="px-4 py-2 bg-button text-white rounded-lg text-sm hover:bg-button/90 transition-all shadow-sm hover:shadow-md flex items-center gap-2"
@@ -881,6 +1384,18 @@ export default function CurriculumPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 印刷設定モーダル */}
+      {showPrintModal && (
+        <PrintSetupModal
+          classes={classes}
+          onClose={() => setShowPrintModal(false)}
+          onPreview={(config) => {
+            setShowPrintModal(false);
+            setPrintMode(config);
+          }}
+        />
       )}
 
       {/* 編集モーダル */}

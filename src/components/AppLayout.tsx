@@ -10,7 +10,7 @@ import { ChildWithGrowth } from '@/lib/childrenStore';
 import { AttendanceRecord } from '@/types/document';
 import { SchoolSettings } from '@/types/settings';
 import { ShiftPattern, ShiftAssignment, StaffAttendanceRecord } from '@/types/staffAttendance';
-import { CalendarEvent } from '@/types/calendar';
+import { CalendarEvent, SupportAssignment } from '@/types/calendar';
 import { FloatingPopup } from './FloatingPopup';
 import { AppRole } from '@/lib/supabase/auth';
 import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit';
@@ -24,7 +24,7 @@ export interface Staff {
   id: string;
   firstName: string;
   lastName: string;
-  role: '園長' | '主任' | '担任' | '副担任' | 'パート';
+  role: string;
   classAssignment?: string;
   email?: string;
   phone?: string;
@@ -83,6 +83,10 @@ interface AppContextType {
   addCalendarEvent: (event: CalendarEvent) => void;
   updateCalendarEvent: (event: CalendarEvent) => void;
   deleteCalendarEvent: (id: string) => void;
+  supportAssignments: SupportAssignment[];
+  addSupportAssignment: (assignment: SupportAssignment) => void;
+  updateSupportAssignment: (assignment: SupportAssignment) => void;
+  deleteSupportAssignment: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -114,6 +118,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     currentUserRole,
     fiscalYear, setFiscalYear,
     calendarEvents, setCalendarEvents,
+    supportAssignments, setSupportAssignments,
   } = useHydration();
 
   const addCalendarEvent = (event: CalendarEvent) => {
@@ -127,6 +132,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const deleteCalendarEvent = (id: string) => {
     setCalendarEvents(prev => prev.filter(e => e.id !== id));
     auditDelete('calendar_event', id);
+  };
+
+  const addSupportAssignment = (assignment: SupportAssignment) => {
+    setSupportAssignments(prev => [...prev, assignment]);
+    auditCreate('support_assignment', assignment.id, { staffId: assignment.staffId });
+  };
+  const updateSupportAssignment = (assignment: SupportAssignment) => {
+    setSupportAssignments(prev => prev.map(a => a.id === assignment.id ? assignment : a));
+    auditUpdate('support_assignment', assignment.id, { staffId: assignment.staffId });
+  };
+  const deleteSupportAssignment = (id: string) => {
+    setSupportAssignments(prev => prev.filter(a => a.id !== id));
+    auditDelete('support_assignment', id);
   };
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -278,6 +296,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
         addCalendarEvent,
         updateCalendarEvent,
         deleteCalendarEvent,
+        supportAssignments,
+        addSupportAssignment,
+        updateSupportAssignment,
+        deleteSupportAssignment,
       }}
     >
       <div className="flex min-h-screen bg-background">

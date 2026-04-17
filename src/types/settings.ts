@@ -58,9 +58,73 @@ export interface GraduateCount {
 export interface ClassInfo {
   id: string;
   name: string;
-  grade: '年少' | '年中' | '年長';
+  grade: '未就園児' | '満3歳児' | '年少' | '年中' | '年長';
   color: string;
 }
+
+export interface StaffRoleConfig {
+  id: string;
+  name: string;
+  displayOrder: number;
+}
+
+export interface MenuVisibilityConfig {
+  hiddenItems: string[];
+}
+
+export type LLMProvider = 'gemini' | 'openai' | 'claude';
+
+export interface LLMConfig {
+  provider: LLMProvider;
+  apiKey: string;
+  model: string;
+}
+
+export const llmProviderOptions: Record<LLMProvider, { label: string; models: { id: string; label: string }[] }> = {
+  gemini: {
+    label: 'Google Gemini',
+    models: [
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview)' },
+      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (Preview)' },
+      { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite (Preview)' },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+    ],
+  },
+  openai: {
+    label: 'OpenAI',
+    models: [
+      { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+      { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
+      { id: 'gpt-5.4', label: 'GPT-5.4' },
+      { id: 'gpt-4.1', label: 'GPT-4.1' },
+      { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+      { id: 'o3-mini', label: 'o3-mini' },
+      { id: 'o4-mini', label: 'o4-mini' },
+      { id: 'o3', label: 'o3' },
+    ],
+  },
+  claude: {
+    label: 'Anthropic Claude',
+    models: [
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+      { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+      { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
+      { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+      { id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
+    ],
+  },
+};
+
+export const defaultStaffRoleConfigs: StaffRoleConfig[] = [
+  { id: 'encho', name: '園長', displayOrder: 0 },
+  { id: 'shunin', name: '主任', displayOrder: 1 },
+  { id: 'tannin', name: '担任', displayOrder: 2 },
+  { id: 'fukutannin', name: '副担任', displayOrder: 3 },
+  { id: 'part', name: 'パート', displayOrder: 4 },
+];
 
 export interface SchoolSettings {
   basicInfo: BasicInfo;
@@ -70,6 +134,9 @@ export interface SchoolSettings {
   classEnrollments: ClassEnrollment[];
   graduateCount: GraduateCount;
   classes: ClassInfo[];
+  staffRoleConfigs?: StaffRoleConfig[];
+  menuVisibility?: MenuVisibilityConfig;
+  llmConfig?: LLMConfig;
 }
 
 export const defaultBasicInfo: BasicInfo = {

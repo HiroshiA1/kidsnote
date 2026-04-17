@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '@/components/AppLayout';
 import { CalendarEventModal } from '@/components/CalendarEventModal';
-import { CalendarEvent, CATEGORY_COLORS } from '@/types/calendar';
+import { SupportAssignmentModal } from '@/components/SupportAssignmentModal';
+import { CalendarEvent, SupportAssignment, CATEGORY_COLORS } from '@/types/calendar';
 import { GoogleCalendarConnect } from '@/components/GoogleCalendarConnect';
 
 // 時間軸設定
@@ -42,9 +43,8 @@ function toDateKey(d: Date): string {
 }
 
 function buildMonthGrid(year: number, month: number): Date[] {
-  // month: 0-11
   const first = new Date(year, month, 1);
-  const startOffset = first.getDay(); // 0=Sun
+  const startOffset = first.getDay();
   const start = new Date(year, month, 1 - startOffset);
   const days: Date[] = [];
   for (let i = 0; i < 42; i++) {
@@ -60,10 +60,12 @@ function buildWeekGrid(ref: Date): Date[] {
   );
 }
 
-type ViewMode = 'month' | 'week';
+type ViewMode = 'month' | 'week' | 'day';
+
+const weekdayNames = ['日', '月', '火', '水', '木', '金', '土'];
 
 export default function CalendarPage() {
-  const { calendarEvents, fiscalYear, staff, settings } = useApp();
+  const { calendarEvents, supportAssignments, fiscalYear, staff, settings } = useApp();
   const today = new Date();
   const [view, setView] = useState<ViewMode>('month');
   const [cursor, setCursor] = useState<Date>(today);
@@ -71,29 +73,38 @@ export default function CalendarPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [presetTime, setPresetTime] = useState<string | null>(null);
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<SupportAssignment | null>(null);
 
   const monthGrid = useMemo(() => buildMonthGrid(cursor.getFullYear(), cursor.getMonth()), [cursor]);
   const weekGrid = useMemo(() => buildWeekGrid(cursor), [cursor]);
-  const grid = view === 'month' ? monthGrid : weekGrid;
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
     for (const ev of calendarEvents) {
       (map[ev.date] ??= []).push(ev);
     }
-    // sort by time within day
     for (const k in map) {
       map[k].sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
     }
     return map;
   }, [calendarEvents]);
 
+  const assignmentsByDate = useMemo(() => {
+    const map: Record<string, SupportAssignment[]> = {};
+    for (const a of supportAssignments) {
+      (map[a.date] ??= []).push(a);
+    }
+    return map;
+  }, [supportAssignments]);
+
   const dayEvents = eventsByDate[selectedDate] ?? [];
 
   const shift = (delta: number) => {
     setCursor(c => {
       if (view === 'month') return new Date(c.getFullYear(), c.getMonth() + delta, 1);
-      return new Date(c.getFullYear(), c.getMonth(), c.getDate() + delta * 7);
+      if (view === 'week') return new Date(c.getFullYear(), c.getMonth(), c.getDate() + delta * 7);
+      return new Date(c.getFullYear(), c.getMonth(), c.getDate() + delta);
     });
   };
   const goToday = () => {
@@ -102,13 +113,17 @@ export default function CalendarPage() {
     setSelectedDate(toDateKey(t));
   };
 
-  const headerLabel = view === 'month'
-    ? `${cursor.getFullYear()}年${cursor.getMonth() + 1}月`
-    : (() => {
-        const s = weekGrid[0];
-        const e = weekGrid[6];
-        return `${s.getFullYear()}年${s.getMonth() + 1}/${s.getDate()} - ${e.getMonth() + 1}/${e.getDate()}`;
-      })();
+  const headerLabel = (() => {
+    if (view === 'month') return `${cursor.getFullYear()}年${cursor.getMonth() + 1}月`;
+    if (view === 'week') {
+      const s = weekGrid[0];
+      const e = weekGrid[6];
+      return `${s.getFullYear()}年${s.getMonth() + 1}/${s.getDate()} - ${e.getMonth() + 1}/${e.getDate()}`;
+    }
+    // day
+    const dow = weekdayNames[cursor.getDay()];
+    return `${cursor.getFullYear()}年${cursor.getMonth() + 1}月${cursor.getDate()}日(${dow})`;
+  })();
 
   const openCreate = (date: string) => {
     setEditingEvent(null);
@@ -133,8 +148,6 @@ export default function CalendarPage() {
     }
   };
 
-  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-
   return (
     <div className="min-h-screen pb-8">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
@@ -156,7 +169,6 @@ export default function CalendarPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 grid gap-6 lg:grid-cols-[1fr_320px]">
-        {/* 月ビュー */}
         <section className="bg-surface rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <div className="flex items-center gap-2">
@@ -166,14 +178,9 @@ export default function CalendarPage() {
             </div>
             <div className="flex items-center gap-2">
               <div className="flex rounded-md border border-secondary/30 overflow-hidden text-xs">
-                <button
-                  onClick={() => setView('month')}
-                  className={`px-3 py-1 ${view === 'month' ? 'bg-button text-white' : 'hover:bg-secondary/20'}`}
-                >月</button>
-                <button
-                  onClick={() => setView('week')}
-                  className={`px-3 py-1 ${view === 'week' ? 'bg-button text-white' : 'hover:bg-secondary/20'}`}
-                >週</button>
+                <button onClick={() => setView('month')} className={`px-3 py-1 ${view === 'month' ? 'bg-button text-white' : 'hover:bg-secondary/20'}`}>月</button>
+                <button onClick={() => setView('week')} className={`px-3 py-1 ${view === 'week' ? 'bg-button text-white' : 'hover:bg-secondary/20'}`}>週</button>
+                <button onClick={() => setView('day')} className={`px-3 py-1 ${view === 'day' ? 'bg-button text-white' : 'hover:bg-secondary/20'}`}>日</button>
               </div>
               <button onClick={goToday} className="text-xs px-2 py-1 rounded border border-secondary/30 hover:bg-secondary/20">
                 今日
@@ -183,7 +190,7 @@ export default function CalendarPage() {
 
           {view === 'month' ? (
             <div className="grid grid-cols-7 gap-px bg-secondary/20 border border-secondary/20 rounded-lg overflow-hidden">
-              {weekdays.map((w, i) => (
+              {weekdayNames.map((w, i) => (
                 <div key={w} className={`bg-surface text-center text-xs font-medium py-2 ${i === 0 ? 'text-red-600' : i === 6 ? 'text-blue-600' : 'text-paragraph/70'}`}>
                   {w}
                 </div>
@@ -233,7 +240,7 @@ export default function CalendarPage() {
                 );
               })}
             </div>
-          ) : (
+          ) : view === 'week' ? (
             <WeekTimelineView
               weekGrid={weekGrid}
               eventsByDate={eventsByDate}
@@ -246,6 +253,23 @@ export default function CalendarPage() {
                 setPresetTime(time);
                 setModalOpen(true);
               }}
+            />
+          ) : (
+            <DayTimelineView
+              dateKey={toDateKey(cursor)}
+              events={eventsByDate[toDateKey(cursor)] ?? []}
+              assignments={assignmentsByDate[toDateKey(cursor)] ?? []}
+              staffMap={staffMap}
+              classMap={classMap}
+              onOpenEdit={openEdit}
+              onOpenAssignment={(a) => { setEditingAssignment(a); setSupportModalOpen(true); }}
+              onCreateAt={(time) => {
+                setEditingEvent(null);
+                setSelectedDate(toDateKey(cursor));
+                setPresetTime(time);
+                setModalOpen(true);
+              }}
+              onAddAssignment={() => { setEditingAssignment(null); setSupportModalOpen(true); }}
             />
           )}
 
@@ -319,6 +343,232 @@ export default function CalendarPage() {
         initialStartTime={presetTime ?? undefined}
         event={editingEvent}
       />
+
+      <SupportAssignmentModal
+        open={supportModalOpen}
+        onClose={() => setSupportModalOpen(false)}
+        initialDate={view === 'day' ? toDateKey(cursor) : selectedDate}
+        assignment={editingAssignment}
+      />
+    </div>
+  );
+}
+
+/** 日ビュー（時間軸付き・1カラム） */
+function DayTimelineView({
+  dateKey,
+  events,
+  assignments,
+  staffMap,
+  classMap,
+  onOpenEdit,
+  onOpenAssignment,
+  onCreateAt,
+  onAddAssignment,
+}: {
+  dateKey: string;
+  events: CalendarEvent[];
+  assignments: SupportAssignment[];
+  staffMap: Record<string, string>;
+  classMap: Record<string, string>;
+  onOpenEdit: (ev: CalendarEvent) => void;
+  onOpenAssignment: (a: SupportAssignment) => void;
+  onCreateAt: (time: string) => void;
+  onAddAssignment: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const todayKey = toDateKey(new Date());
+  const isToday = todayKey === dateKey;
+  const [nowMin, setNowMin] = useState(() => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  });
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = minutesToY(8 * 60) - 20;
+    }
+    const id = setInterval(() => {
+      const n = new Date();
+      setNowMin(n.getHours() * 60 + n.getMinutes());
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const allDay = events.filter(e => e.allDay || !e.startTime);
+  const timed = events.filter(e => !e.allDay && e.startTime);
+
+  // 重なり処理
+  const sorted = [...timed].sort((a, b) => (parseHM(a.startTime) ?? 0) - (parseHM(b.startTime) ?? 0));
+  const groups: CalendarEvent[][] = [];
+  for (const ev of sorted) {
+    const start = parseHM(ev.startTime) ?? 0;
+    const end = parseHM(ev.endTime) ?? start + 30;
+    let placed = false;
+    for (const g of groups) {
+      const lastEnd = Math.max(...g.map(x => parseHM(x.endTime) ?? (parseHM(x.startTime) ?? 0) + 30));
+      const firstStart = Math.min(...g.map(x => parseHM(x.startTime) ?? 0));
+      if (start < lastEnd && end > firstStart) {
+        g.push(ev);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) groups.push([ev]);
+  }
+  const positions = new Map<string, { col: number; colSpan: number }>();
+  for (const g of groups) {
+    g.forEach((ev, i) => positions.set(ev.id, { col: i, colSpan: g.length }));
+  }
+
+  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const time = yToTimeString(y);
+    onCreateAt(time);
+  };
+
+  return (
+    <div className="border border-secondary/20 rounded-lg overflow-hidden">
+      {/* ヘッダー: 補助配置追加ボタン */}
+      <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-secondary/20">
+        <span className="text-sm font-medium text-headline">タイムライン</span>
+        <button
+          onClick={onAddAssignment}
+          className="text-xs px-3 py-1 rounded border border-secondary/30 hover:bg-secondary/20 text-paragraph"
+        >
+          + 補助配置を追加
+        </button>
+      </div>
+
+      {/* 終日イベント行 */}
+      {allDay.length > 0 && (
+        <div className="px-4 py-2 border-b border-secondary/20 space-y-1">
+          <div className="text-[9px] text-paragraph/50">終日</div>
+          {allDay.map(ev => {
+            const c = CATEGORY_COLORS[ev.category];
+            return (
+              <button
+                key={ev.id}
+                onClick={() => onOpenEdit(ev)}
+                className={`block w-full text-left text-xs px-2 py-1 rounded ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+              >
+                {ev.title}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 時間軸本体 */}
+      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: '600px' }}>
+        <div className="grid relative" style={{ gridTemplateColumns: '48px 1fr 160px', height: `${HOURS_TOTAL_PX}px` }}>
+          {/* 時刻ラベル列 */}
+          <div className="relative">
+            {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => {
+              const h = DAY_START_HOUR + i;
+              return (
+                <div
+                  key={h}
+                  className="absolute right-1 text-[10px] text-paragraph/50 -translate-y-1/2"
+                  style={{ top: `${minutesToY(h * 60)}px` }}
+                >
+                  {h}:00
+                </div>
+              );
+            })}
+          </div>
+
+          {/* イベント列 */}
+          <div
+            className={`relative border-l border-secondary/20 cursor-crosshair ${isToday ? 'bg-button/5' : ''}`}
+            onClick={handleTimelineClick}
+          >
+            {/* グリッド線 */}
+            {Array.from({ length: TOTAL_SLOTS }, (_, i) => (
+              <div
+                key={i}
+                className={`absolute left-0 right-0 ${i % 2 === 0 ? 'border-t border-secondary/20' : 'border-t border-secondary/10'}`}
+                style={{ top: `${i * SLOT_HEIGHT_PX}px` }}
+              />
+            ))}
+            {/* 現在時刻線 */}
+            {isToday && nowMin >= DAY_START_HOUR * 60 && nowMin <= DAY_END_HOUR * 60 && (
+              <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `${minutesToY(nowMin)}px` }}>
+                <div className="h-px bg-red-500" />
+                <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-red-500" />
+              </div>
+            )}
+            {/* イベントブロック */}
+            {timed.map(ev => {
+              const start = parseHM(ev.startTime);
+              if (start === null) return null;
+              const end = parseHM(ev.endTime) ?? start + 30;
+              const top = Math.max(0, minutesToY(start));
+              const height = Math.max(SLOT_HEIGHT_PX - 2, minutesToY(end) - minutesToY(start) - 2);
+              const pos = positions.get(ev.id) ?? { col: 0, colSpan: 1 };
+              const widthPct = 100 / pos.colSpan;
+              const leftPct = widthPct * pos.col;
+              const c = CATEGORY_COLORS[ev.category];
+              return (
+                <button
+                  key={ev.id}
+                  onClick={(e) => { e.stopPropagation(); onOpenEdit(ev); }}
+                  className={`absolute overflow-hidden rounded px-1.5 py-0.5 text-left text-[11px] shadow-sm ${c.bg} ${c.text} border border-white ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                  style={{
+                    top: `${top}px`,
+                    height: `${height}px`,
+                    left: `calc(${leftPct}% + 2px)`,
+                    width: `calc(${widthPct}% - 4px)`,
+                    zIndex: 10,
+                  }}
+                  title={`${ev.startTime ?? ''}${ev.endTime ? '-' + ev.endTime : ''} ${ev.title}`}
+                >
+                  <div className="font-medium truncate">{ev.startTime} {ev.title}</div>
+                  {height > 30 && ev.location && <div className="truncate opacity-75">{ev.location}</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 補助教諭配置レーン */}
+          <div className="relative border-l border-secondary/20 bg-amber-50/30">
+            {/* ヘッダーラベル */}
+            <div className="absolute top-0 left-0 right-0 text-[9px] text-amber-700 font-medium px-1 py-0.5 bg-amber-100/50 border-b border-amber-200/50 z-10">
+              補助配置
+            </div>
+            {/* グリッド線 */}
+            {Array.from({ length: TOTAL_SLOTS }, (_, i) => (
+              <div
+                key={i}
+                className={`absolute left-0 right-0 ${i % 2 === 0 ? 'border-t border-amber-200/40' : 'border-t border-amber-100/40'}`}
+                style={{ top: `${i * SLOT_HEIGHT_PX}px` }}
+              />
+            ))}
+            {/* 配置ブロック */}
+            {assignments.map(a => {
+              const start = parseHM(a.startTime);
+              const end = parseHM(a.endTime);
+              if (start === null || end === null) return null;
+              const top = Math.max(0, minutesToY(start));
+              const height = Math.max(SLOT_HEIGHT_PX - 2, minutesToY(end) - minutesToY(start) - 2);
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => onOpenAssignment(a)}
+                  className="absolute left-1 right-1 bg-amber-200/80 border border-amber-400/60 rounded px-1.5 py-0.5 text-left text-[10px] text-amber-900 shadow-sm hover:bg-amber-300/80 transition-colors overflow-hidden"
+                  style={{ top: `${top}px`, height: `${height}px`, zIndex: 10 }}
+                  title={`${a.startTime}-${a.endTime} ${staffMap[a.staffId] ?? '?'} → ${classMap[a.targetClassId] ?? '?'}`}
+                >
+                  <div className="font-medium truncate">{staffMap[a.staffId] ?? '?'}</div>
+                  <div className="truncate opacity-75">→ {classMap[a.targetClassId] ?? '?'}</div>
+                  {height > 36 && a.taskDescription && <div className="truncate opacity-60">{a.taskDescription}</div>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -346,7 +596,6 @@ function WeekTimelineView({
   });
 
   useEffect(() => {
-    // 初期スクロール位置: 8:00 付近
     if (scrollRef.current) {
       scrollRef.current.scrollTop = minutesToY(8 * 60) - 20;
     }
@@ -357,10 +606,8 @@ function WeekTimelineView({
     return () => clearInterval(id);
   }, []);
 
-  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
   const todayKey = toDateKey(new Date());
 
-  // 各日のイベントを all-day と timed に分割
   const splitEvents = (dateKey: string) => {
     const evs = eventsByDate[dateKey] ?? [];
     const allDay: CalendarEvent[] = [];
@@ -400,7 +647,7 @@ function WeekTimelineView({
               }`}
             >
               <div className={`text-[10px] ${dow === 0 ? 'text-red-600' : dow === 6 ? 'text-blue-600' : 'text-paragraph/60'}`}>
-                {weekdays[dow]}
+                {weekdayNames[dow]}
               </div>
               <div className={`text-sm font-bold ${
                 isToday ? 'inline-flex items-center justify-center w-6 h-6 rounded-full bg-button text-white mt-0.5' : 'text-headline'
@@ -465,9 +712,7 @@ function WeekTimelineView({
             const key = toDateKey(d);
             const isToday = todayKey === key;
             const { timed } = splitEvents(key);
-            // 重なり処理: 簡易的に開始時刻順に並べ、overlap で横並び
             const sorted = [...timed].sort((a, b) => (parseHM(a.startTime) ?? 0) - (parseHM(b.startTime) ?? 0));
-            // グループ化
             const groups: CalendarEvent[][] = [];
             for (const ev of sorted) {
               const start = parseHM(ev.startTime) ?? 0;
@@ -495,7 +740,6 @@ function WeekTimelineView({
                 className={`relative border-l border-secondary/20 cursor-crosshair ${isToday ? 'bg-button/5' : ''}`}
                 onClick={(e) => handleTimelineClick(e, key)}
               >
-                {/* 30分グリッド線 */}
                 {Array.from({ length: TOTAL_SLOTS }, (_, i) => (
                   <div
                     key={i}
@@ -503,17 +747,12 @@ function WeekTimelineView({
                     style={{ top: `${i * SLOT_HEIGHT_PX}px` }}
                   />
                 ))}
-                {/* 現在時刻線 */}
                 {isToday && nowMin >= DAY_START_HOUR * 60 && nowMin <= DAY_END_HOUR * 60 && (
-                  <div
-                    className="absolute left-0 right-0 z-20 pointer-events-none"
-                    style={{ top: `${minutesToY(nowMin)}px` }}
-                  >
+                  <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `${minutesToY(nowMin)}px` }}>
                     <div className="h-px bg-red-500" />
                     <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-red-500" />
                   </div>
                 )}
-                {/* イベント */}
                 {timed.map(ev => {
                   const start = parseHM(ev.startTime);
                   if (start === null) return null;

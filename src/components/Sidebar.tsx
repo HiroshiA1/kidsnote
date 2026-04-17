@@ -35,15 +35,6 @@ function NavIcon({ paths }: { paths: string[] }) {
   );
 }
 
-/** 準備中バッジ */
-function WipBadge() {
-  return (
-    <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-paragraph/10 text-paragraph/50 whitespace-nowrap">
-      準備中
-    </span>
-  );
-}
-
 /** ナビゲーションアイテム */
 function NavItemLink({
   item,
@@ -72,7 +63,6 @@ function NavItemLink({
       >
         <NavIcon paths={item.iconPaths} />
         {!isCollapsed && <span className={large ? '' : 'text-sm'}>{item.label}</span>}
-        {!isCollapsed && item.wip && <WipBadge />}
       </Link>
     </li>
   );
@@ -145,7 +135,8 @@ function CollapsibleSection({
 
 export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
-  const { currentUserRole, fiscalYear, setFiscalYear } = useApp();
+  const { currentUserRole, fiscalYear, setFiscalYear, settings } = useApp();
+  const hiddenItems = settings.menuVisibility?.hiddenItems ?? [];
   const yearOptions = getFiscalYearOptions();
 
   const isActive = (href: string) => {
@@ -228,7 +219,7 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
       <nav className="flex-1 p-2 overflow-y-auto">
         {/* トップレベルナビ */}
         <ul className="space-y-1">
-          {topNavItems.map(item => (
+          {topNavItems.filter(item => !hiddenItems.includes(item.href)).map(item => (
             <NavItemLink
               key={item.href}
               item={item}
@@ -242,9 +233,11 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
 
         {/* セクション */}
         {navSections.map(section => {
-          const items = section.roleFiltered
+          let items = section.roleFiltered
             ? filterByRole(section.items, currentUserRole)
             : section.items;
+          items = items.filter(item => !hiddenItems.includes(item.href));
+          if (items.length === 0) return null;
           return (
             <CollapsibleSection
               key={section.key}

@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useApp, Staff } from '@/components/AppLayout';
 import { calculateYearsOfService } from '@/lib/formatters';
+import { defaultStaffRoleConfigs } from '@/types/settings';
 import StaffCreateModal from '@/components/StaffCreateModal';
 
 // Supabaseのstaff行をUIのStaff型にマップ
@@ -11,7 +12,7 @@ interface SupabaseStaffRow {
   id: string;
   first_name: string;
   last_name: string;
-  role: Staff['role'];
+  role: string;
   class_assignment: string | null;
   email: string | null;
   phone: string | null;
@@ -37,7 +38,7 @@ function mapSupabaseStaff(row: SupabaseStaffRow): Staff {
 
 type ViewMode = 'list' | 'card';
 
-const roleColors: Record<Staff['role'], string> = {
+const defaultRoleColors: Record<string, string> = {
   '園長': 'bg-button text-white',
   '主任': 'bg-tertiary text-headline',
   '担任': 'bg-secondary text-headline',
@@ -45,7 +46,11 @@ const roleColors: Record<Staff['role'], string> = {
   'パート': 'bg-paragraph/20 text-paragraph',
 };
 
-const roleOrder: Staff['role'][] = ['園長', '主任', '担任', '副担任', 'パート'];
+const fallbackColor = 'bg-paragraph/10 text-paragraph';
+
+function getRoleColor(role: string): string {
+  return defaultRoleColors[role] ?? fallbackColor;
+}
 
 function StaffListItem({ staff }: { staff: Staff }) {
   const yearsOfService = calculateYearsOfService(staff.hireDate);
@@ -64,7 +69,7 @@ function StaffListItem({ staff }: { staff: Staff }) {
               <h3 className="font-bold text-headline truncate">
                 {staff.lastName} {staff.firstName}
               </h3>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${roleColors[staff.role]}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${getRoleColor(staff.role)}`}>
                 {staff.role}
               </span>
             </div>
@@ -105,7 +110,7 @@ function StaffCard({ staff }: { staff: Staff }) {
               <h3 className="font-bold text-headline">
                 {staff.lastName} {staff.firstName}
               </h3>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${roleColors[staff.role]}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${getRoleColor(staff.role)}`}>
                 {staff.role}
               </span>
             </div>
@@ -144,7 +149,9 @@ function StaffCard({ staff }: { staff: Staff }) {
 }
 
 export default function StaffPage() {
-  const { staff: localStaffData } = useApp();
+  const { staff: localStaffData, settings } = useApp();
+  const roleConfigs = settings.staffRoleConfigs ?? defaultStaffRoleConfigs;
+  const roleOrder = roleConfigs.map(r => r.name);
   const [supabaseStaff, setSupabaseStaff] = useState<Staff[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -194,21 +201,30 @@ export default function StaffPage() {
         staff.lastName.includes(searchQuery);
       const matchesRole = selectedRole === 'all' || staff.role === selectedRole;
       return matchesSearch && matchesRole;
-    }).sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role));
-  }, [staffData, searchQuery, selectedRole]);
+    }).sort((a, b) => {
+      const ai = roleOrder.indexOf(a.role);
+      const bi = roleOrder.indexOf(b.role);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+  }, [staffData, searchQuery, selectedRole, roleOrder]);
 
   // 役職別グルーピング
   const groupedByRole = useMemo(() => {
-    const groups = new Map<Staff['role'], Staff[]>();
-    for (const staff of filteredStaff) {
-      if (!groups.has(staff.role)) groups.set(staff.role, []);
-      groups.get(staff.role)!.push(staff);
+    const groups = new Map<string, Staff[]>();
+    for (const s of filteredStaff) {
+      if (!groups.has(s.role)) groups.set(s.role, []);
+      groups.get(s.role)!.push(s);
     }
-    return roleOrder.filter(r => groups.has(r)).map(role => ({
+    // roleOrder に含まれるものを先に、残りを末尾に
+    const ordered = [...roleOrder.filter(r => groups.has(r))];
+    for (const r of groups.keys()) {
+      if (!ordered.includes(r)) ordered.push(r);
+    }
+    return ordered.map(role => ({
       role,
       staff: groups.get(role)!,
     }));
-  }, [filteredStaff]);
+  }, [filteredStaff, roleOrder]);
 
   return (
     <div className="min-h-screen">
@@ -295,7 +311,7 @@ export default function StaffPage() {
             {groupedByRole.map(({ role, staff }) => (
               <div key={role} className="bg-surface rounded-xl border border-secondary/20 overflow-hidden">
                 <div className="bg-secondary/5 border-b-2 border-secondary/20 px-4 py-3 flex items-center gap-3">
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${roleColors[role]}`}>
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleColor(role)}`}>
                     {role}
                   </span>
                   <span className="text-xs text-paragraph/50">{staff.length}名</span>

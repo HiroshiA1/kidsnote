@@ -5,7 +5,6 @@ export interface NavItem {
   label: string;
   /** SVG path data (d attribute) for the icon */
   iconPaths: string[];
-  wip?: boolean;
   minRole?: AppRole;
 }
 
@@ -71,9 +70,9 @@ export const navSections: NavSection[] = [
     activePrefix: '/plans',
     defaultExpanded: true,
     items: [
-      { href: '/plans/curriculum', label: '保育計画', wip: true, iconPaths: [PATHS.clipboard] },
-      { href: '/plans/class-activity', label: 'クラス活動', wip: true, iconPaths: [PATHS.academic] },
-      { href: '/plans/events', label: '行事', wip: true, iconPaths: [PATHS.calendar] },
+      { href: '/plans/curriculum', label: '保育計画', iconPaths: [PATHS.clipboard] },
+      { href: '/plans/class-activity', label: 'クラス活動', iconPaths: [PATHS.academic] },
+      { href: '/plans/events', label: '行事', iconPaths: [PATHS.calendar] },
     ],
   },
   {
@@ -94,7 +93,7 @@ export const navSections: NavSection[] = [
     items: [
       { href: '/staff/shifts', label: 'シフト管理', iconPaths: [PATHS.calendarSimple] },
       { href: '/staff/attendance', label: '出勤簿', iconPaths: [PATHS.clock] },
-      { href: '/staff/coverage', label: '配置管理', wip: true, iconPaths: [PATHS.warning] },
+      { href: '/staff/coverage', label: '配置管理', iconPaths: [PATHS.warning] },
     ],
   },
   {
@@ -103,7 +102,7 @@ export const navSections: NavSection[] = [
     activePrefix: '/requests',
     defaultExpanded: true,
     items: [
-      { href: '/requests', label: '内部申請', wip: true, iconPaths: [PATHS.clipboard] },
+      { href: '/requests', label: '内部申請', iconPaths: [PATHS.clipboard] },
     ],
   },
   {
@@ -113,7 +112,7 @@ export const navSections: NavSection[] = [
     alwaysExpanded: true,
     roleFiltered: true,
     items: [
-      { href: '/children/considerations', label: '配慮事項', wip: true, iconPaths: [PATHS.shield] },
+      { href: '/children/considerations', label: '配慮事項', iconPaths: [PATHS.shield] },
       { href: '/staff', label: '職員一覧', iconPaths: [PATHS.user] },
       { href: '/rules', label: '園のルール', minRole: 'manager' as AppRole, iconPaths: [PATHS.book] },
       { href: '/settings', label: '設定', minRole: 'admin' as AppRole, iconPaths: [PATHS.settings1, PATHS.settings2] },

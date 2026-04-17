@@ -1,25 +1,30 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useApp } from '@/components/AppLayout';
-import { SchoolSettings, TeacherCount, StaffCount, LeaveRecord, ClassEnrollment, ClassInfo, defaultStaffPositions, StaffPosition } from '@/types/settings';
-import { aggregateTeacherCounts, aggregateEnrollment } from '@/lib/settingsAggregation';
+import { SchoolSettings, ClassInfo, StaffRoleConfig, LLMProvider, llmProviderOptions, defaultStaffRoleConfigs } from '@/types/settings';
 import { ShiftPattern } from '@/types/staffAttendance';
+import { topNavItems, navSections } from '@/lib/constants/navigation';
 
-type TabId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
+type TabId = 'A' | 'G' | 'H' | 'I' | 'J' | 'K';
 
 const tabs: { id: TabId; label: string }[] = [
-  { id: 'H', label: 'H: クラス管理' },
-  { id: 'A', label: 'A: 基本情報' },
-  { id: 'B', label: 'B: 教員数' },
-  { id: 'C', label: 'C: 職員数' },
-  { id: 'D', label: 'D: 休職・代替' },
-  { id: 'E', label: 'E: 在園者数' },
-  { id: 'F', label: 'F: 修了者数' },
-  { id: 'G', label: 'G: シフトパターン' },
+  { id: 'H', label: 'クラス管理' },
+  { id: 'A', label: '基本情報' },
+  { id: 'G', label: 'シフトパターン' },
+  { id: 'I', label: 'スタッフ役職' },
+  { id: 'J', label: 'メニュー表示' },
+  { id: 'K', label: 'LLM設定' },
 ];
 
-const defaultColors = ['#4CAF50', '#2196F3', '#FF9800', '#FFC107', '#9E9E9E', '#E91E63', '#9C27B0', '#00BCD4'];
+const classColors = [
+  '#EF4444', '#F87171', '#EC4899', '#F472B6', '#E11D48',
+  '#F59E0B', '#FBBF24', '#EAB308', '#FB923C', '#F97316',
+  '#10B981', '#34D399', '#22C55E', '#4ADE80', '#14B8A6',
+  '#0EA5E9', '#38BDF8', '#3B82F6', '#60A5FA', '#06B6D4',
+  '#8B5CF6', '#A78BFA', '#6366F1', '#818CF8', '#A855F7',
+  '#78716C', '#9CA3AF', '#64748B', '#D97706', '#BE185D',
+];
 
 function InputField({ label, value, onChange, type = 'text', placeholder }: {
   label: string; value: string | number; onChange: (v: string) => void; type?: string; placeholder?: string;
@@ -86,260 +91,6 @@ function SectionA({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: 
   );
 }
 
-function SectionB({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
-  const { staff } = useApp();
-  const autoCalculated = useMemo(() => aggregateTeacherCounts(staff), [staff]);
-
-  const handleUseAuto = () => {
-    onUpdate({ ...settings, teacherCounts: autoCalculated });
-  };
-
-  const updateTeacher = (index: number, field: keyof TeacherCount, value: number) => {
-    const next = [...settings.teacherCounts];
-    next[index] = { ...next[index], [field]: value, isAutoCalculated: false };
-    onUpdate({ ...settings, teacherCounts: next });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-headline">教員数（職階別×本務/兼務×男女）</h3>
-        <button onClick={handleUseAuto} className="px-3 py-1.5 bg-tertiary/20 text-headline text-xs rounded-lg hover:bg-tertiary/30 transition-colors">
-          職員データから自動集計
-        </button>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-secondary/10">
-              <th className="px-3 py-2 text-left border border-secondary/20">職階</th>
-              <th className="px-3 py-2 text-center border border-secondary/20" colSpan={2}>本務</th>
-              <th className="px-3 py-2 text-center border border-secondary/20" colSpan={2}>兼務</th>
-              <th className="px-3 py-2 text-center border border-secondary/20">計</th>
-            </tr>
-            <tr className="bg-secondary/5">
-              <th className="px-3 py-1 border border-secondary/20"></th>
-              <th className="px-3 py-1 text-center border border-secondary/20 text-xs">男</th>
-              <th className="px-3 py-1 text-center border border-secondary/20 text-xs">女</th>
-              <th className="px-3 py-1 text-center border border-secondary/20 text-xs">男</th>
-              <th className="px-3 py-1 text-center border border-secondary/20 text-xs">女</th>
-              <th className="px-3 py-1 text-center border border-secondary/20 text-xs"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {settings.teacherCounts.map((tc, i) => {
-              const total = tc.fullTimeMale + tc.fullTimeFemale + tc.partTimeMale + tc.partTimeFemale;
-              return (
-                <tr key={tc.position} className="hover:bg-secondary/5">
-                  <td className="px-3 py-2 border border-secondary/20 font-medium">{tc.position}</td>
-                  <td className="px-1 py-1 border border-secondary/20">
-                    <input type="number" min={0} value={tc.fullTimeMale} onChange={e => updateTeacher(i, 'fullTimeMale', parseInt(e.target.value) || 0)}
-                      className="w-full text-center px-1 py-1 bg-surface border border-secondary/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-button/30" />
-                  </td>
-                  <td className="px-1 py-1 border border-secondary/20">
-                    <input type="number" min={0} value={tc.fullTimeFemale} onChange={e => updateTeacher(i, 'fullTimeFemale', parseInt(e.target.value) || 0)}
-                      className="w-full text-center px-1 py-1 bg-surface border border-secondary/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-button/30" />
-                  </td>
-                  <td className="px-1 py-1 border border-secondary/20">
-                    <input type="number" min={0} value={tc.partTimeMale} onChange={e => updateTeacher(i, 'partTimeMale', parseInt(e.target.value) || 0)}
-                      className="w-full text-center px-1 py-1 bg-surface border border-secondary/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-button/30" />
-                  </td>
-                  <td className="px-1 py-1 border border-secondary/20">
-                    <input type="number" min={0} value={tc.partTimeFemale} onChange={e => updateTeacher(i, 'partTimeFemale', parseInt(e.target.value) || 0)}
-                      className="w-full text-center px-1 py-1 bg-surface border border-secondary/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-button/30" />
-                  </td>
-                  <td className="px-3 py-2 text-center border border-secondary/20 font-medium">{total}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function SectionC({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
-  const updateStaff = (index: number, field: keyof StaffCount, value: number) => {
-    const next = [...settings.staffCounts];
-    next[index] = { ...next[index], [field]: value };
-    onUpdate({ ...settings, staffCounts: next });
-  };
-
-  const addPosition = () => {
-    const available = defaultStaffPositions.filter(p => !settings.staffCounts.find(s => s.position === p));
-    if (available.length === 0) return;
-    onUpdate({
-      ...settings,
-      staffCounts: [...settings.staffCounts, { position: available[0], male: 0, female: 0 }],
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-headline">職員数（事務・養護・用務等）</h3>
-        <button onClick={addPosition} className="px-3 py-1.5 bg-button/10 text-button text-xs rounded-lg hover:bg-button/20 transition-colors">
-          + 追加
-        </button>
-      </div>
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="bg-secondary/10">
-            <th className="px-3 py-2 text-left border border-secondary/20">職種</th>
-            <th className="px-3 py-2 text-center border border-secondary/20">男</th>
-            <th className="px-3 py-2 text-center border border-secondary/20">女</th>
-            <th className="px-3 py-2 text-center border border-secondary/20">計</th>
-          </tr>
-        </thead>
-        <tbody>
-          {settings.staffCounts.map((sc, i) => (
-            <tr key={sc.position} className="hover:bg-secondary/5">
-              <td className="px-3 py-2 border border-secondary/20 font-medium">{sc.position}</td>
-              <td className="px-1 py-1 border border-secondary/20">
-                <input type="number" min={0} value={sc.male} onChange={e => updateStaff(i, 'male', parseInt(e.target.value) || 0)}
-                  className="w-full text-center px-1 py-1 bg-surface border border-secondary/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-button/30" />
-              </td>
-              <td className="px-1 py-1 border border-secondary/20">
-                <input type="number" min={0} value={sc.female} onChange={e => updateStaff(i, 'female', parseInt(e.target.value) || 0)}
-                  className="w-full text-center px-1 py-1 bg-surface border border-secondary/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-button/30" />
-              </td>
-              <td className="px-3 py-2 text-center border border-secondary/20 font-medium">{sc.male + sc.female}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function SectionD({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
-  const updateLeave = (index: number, value: number) => {
-    const next = [...settings.leaveRecords];
-    next[index] = { ...next[index], count: value };
-    onUpdate({ ...settings, leaveRecords: next });
-  };
-
-  return (
-    <div className="space-y-4">
-      <h3 className="font-bold text-headline">休職・代替教員等</h3>
-      <div className="grid grid-cols-2 gap-4">
-        {settings.leaveRecords.map((lr, i) => (
-          <div key={lr.type} className="bg-surface rounded-lg border border-secondary/20 p-4">
-            <label className="block text-sm font-medium text-headline mb-2">{lr.type}</label>
-            <input
-              type="number" min={0} value={lr.count}
-              onChange={e => updateLeave(i, parseInt(e.target.value) || 0)}
-              className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm text-paragraph text-center focus:outline-none focus:ring-2 focus:ring-button/30"
-            />
-            <span className="text-xs text-paragraph/50 mt-1 block">人</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SectionE({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
-  const { children } = useApp();
-  const autoCalculated = useMemo(() => aggregateEnrollment(children), [children]);
-
-  const handleUseAuto = () => {
-    onUpdate({ ...settings, classEnrollments: autoCalculated });
-  };
-
-  const updateEnrollment = (index: number, field: keyof ClassEnrollment, value: number) => {
-    const next = [...settings.classEnrollments];
-    next[index] = { ...next[index], [field]: value, isAutoCalculated: false };
-    onUpdate({ ...settings, classEnrollments: next });
-  };
-
-  const enrollments = settings.classEnrollments.length > 0 ? settings.classEnrollments : autoCalculated;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-headline">学級別在園者数（年齢別×男女）</h3>
-        <button onClick={handleUseAuto} className="px-3 py-1.5 bg-tertiary/20 text-headline text-xs rounded-lg hover:bg-tertiary/30 transition-colors">
-          園児データから自動集計
-        </button>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-secondary/10">
-              <th className="px-3 py-2 text-left border border-secondary/20">クラス</th>
-              <th className="px-3 py-2 text-center border border-secondary/20" colSpan={2}>3歳児</th>
-              <th className="px-3 py-2 text-center border border-secondary/20" colSpan={2}>4歳児</th>
-              <th className="px-3 py-2 text-center border border-secondary/20" colSpan={2}>5歳児</th>
-              <th className="px-3 py-2 text-center border border-secondary/20">合計</th>
-            </tr>
-            <tr className="bg-secondary/5">
-              <th className="border border-secondary/20"></th>
-              <th className="px-2 py-1 text-center border border-secondary/20 text-xs">男</th>
-              <th className="px-2 py-1 text-center border border-secondary/20 text-xs">女</th>
-              <th className="px-2 py-1 text-center border border-secondary/20 text-xs">男</th>
-              <th className="px-2 py-1 text-center border border-secondary/20 text-xs">女</th>
-              <th className="px-2 py-1 text-center border border-secondary/20 text-xs">男</th>
-              <th className="px-2 py-1 text-center border border-secondary/20 text-xs">女</th>
-              <th className="border border-secondary/20"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {enrollments.map((ce, i) => {
-              const total = ce.age3Male + ce.age3Female + ce.age4Male + ce.age4Female + ce.age5Male + ce.age5Female;
-              return (
-                <tr key={ce.className} className="hover:bg-secondary/5">
-                  <td className="px-3 py-2 border border-secondary/20 font-medium">{ce.className}</td>
-                  {(['age3Male', 'age3Female', 'age4Male', 'age4Female', 'age5Male', 'age5Female'] as const).map(field => (
-                    <td key={field} className="px-1 py-1 border border-secondary/20">
-                      <input type="number" min={0} value={ce[field]}
-                        onChange={e => updateEnrollment(i, field, parseInt(e.target.value) || 0)}
-                        className="w-full text-center px-1 py-1 bg-surface border border-secondary/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-button/30" />
-                    </td>
-                  ))}
-                  <td className="px-3 py-2 text-center border border-secondary/20 font-medium">{total}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function SectionF({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
-  const gc = settings.graduateCount;
-  return (
-    <div className="space-y-4">
-      <h3 className="font-bold text-headline">修了者数（前年度）</h3>
-      <div className="grid grid-cols-3 gap-4 max-w-md">
-        <div>
-          <label className="block text-xs font-medium text-paragraph/70 mb-1">男</label>
-          <input type="number" min={0} value={gc.male}
-            onChange={e => onUpdate({ ...settings, graduateCount: { ...gc, male: parseInt(e.target.value) || 0 } })}
-            className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm text-paragraph text-center focus:outline-none focus:ring-2 focus:ring-button/30" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-paragraph/70 mb-1">女</label>
-          <input type="number" min={0} value={gc.female}
-            onChange={e => onUpdate({ ...settings, graduateCount: { ...gc, female: parseInt(e.target.value) || 0 } })}
-            className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm text-paragraph text-center focus:outline-none focus:ring-2 focus:ring-button/30" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-paragraph/70 mb-1">計</label>
-          <div className="px-3 py-2 bg-secondary/10 border border-secondary/20 rounded-lg text-sm text-headline text-center font-medium">
-            {gc.male + gc.female}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SectionG({ patterns, onUpdate }: { patterns: ShiftPattern[]; onUpdate: (p: ShiftPattern[]) => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<ShiftPattern | null>(null);
@@ -348,7 +99,7 @@ function SectionG({ patterns, onUpdate }: { patterns: ShiftPattern[]; onUpdate: 
     const newPattern: ShiftPattern = {
       id: crypto.randomUUID(),
       name: '',
-      color: defaultColors[patterns.length % defaultColors.length],
+      color: classColors[patterns.length % classColors.length],
       startTime: '08:30',
       endTime: '17:30',
       breakMinutes: 60,
@@ -418,20 +169,22 @@ function SectionG({ patterns, onUpdate }: { patterns: ShiftPattern[]; onUpdate: 
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-paragraph/70 mb-1">表示色</label>
-                    <div className="flex gap-2 items-center">
+                    <div className="flex gap-3 items-start">
                       <input
                         type="color"
                         value={editForm.color}
                         onChange={e => setEditForm({ ...editForm, color: e.target.value })}
-                        className="w-10 h-10 rounded cursor-pointer border border-secondary/30"
+                        className="w-10 h-10 rounded cursor-pointer border border-secondary/30 flex-shrink-0"
+                        title="カスタムカラーを選択"
                       />
-                      <div className="flex gap-1 flex-wrap">
-                        {defaultColors.map(c => (
+                      <div className="grid grid-cols-10 gap-1.5">
+                        {classColors.map(c => (
                           <button
                             key={c}
                             onClick={() => setEditForm({ ...editForm, color: c })}
-                            className={`w-6 h-6 rounded-full border-2 transition-transform ${editForm.color === c ? 'border-headline scale-110' : 'border-transparent hover:scale-105'}`}
+                            className={`w-6 h-6 rounded-full border-2 transition-all ${editForm.color === c ? 'border-headline scale-110 ring-2 ring-button/30' : 'border-transparent hover:scale-110'}`}
                             style={{ backgroundColor: c }}
+                            title={c}
                           />
                         ))}
                       </div>
@@ -508,8 +261,6 @@ function SectionG({ patterns, onUpdate }: { patterns: ShiftPattern[]; onUpdate: 
     </div>
   );
 }
-
-const classColors = ['#EC4899', '#F59E0B', '#EF4444', '#EAB308', '#FB923C', '#0EA5E9', '#A78BFA', '#10B981', '#6366F1', '#F97316', '#14B8A6', '#8B5CF6'];
 
 function SectionH({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
   const classes = settings.classes;
@@ -601,28 +352,34 @@ function SectionH({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: 
                       onChange={e => setEditForm({ ...editForm, grade: e.target.value as ClassInfo['grade'] })}
                       className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-button/30"
                     >
+                      <option value="未就園児">未就園児</option>
+                      <option value="満3歳児">満3歳児</option>
                       <option value="年少">年少</option>
                       <option value="年中">年中</option>
                       <option value="年長">年長</option>
                     </select>
                   </div>
-                  <div>
+                  <div className="col-span-3">
                     <label className="block text-xs font-medium text-paragraph/70 mb-1">表示色</label>
-                    <div className="flex gap-1 items-center flex-wrap">
+                    <div className="flex gap-3 items-start">
                       <input
                         type="color"
                         value={editForm.color}
                         onChange={e => setEditForm({ ...editForm, color: e.target.value })}
-                        className="w-8 h-8 rounded cursor-pointer border border-secondary/30"
+                        className="w-10 h-10 rounded cursor-pointer border border-secondary/30 flex-shrink-0"
+                        title="カスタムカラーを選択"
                       />
-                      {classColors.map(c => (
-                        <button
-                          key={c}
-                          onClick={() => setEditForm({ ...editForm, color: c })}
-                          className={`w-5 h-5 rounded-full border-2 transition-transform ${editForm.color === c ? 'border-headline scale-110' : 'border-transparent hover:scale-105'}`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
+                      <div className="grid grid-cols-10 gap-1.5">
+                        {classColors.map(c => (
+                          <button
+                            key={c}
+                            onClick={() => setEditForm({ ...editForm, color: c })}
+                            className={`w-6 h-6 rounded-full border-2 transition-all ${editForm.color === c ? 'border-headline scale-110 ring-2 ring-button/30' : 'border-transparent hover:scale-110'}`}
+                            style={{ backgroundColor: c }}
+                            title={c}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -685,6 +442,289 @@ function SectionH({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: 
   );
 }
 
+function SectionI({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
+  const roles = settings.staffRoleConfigs ?? defaultStaffRoleConfigs;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const addRole = () => {
+    const newRole: StaffRoleConfig = {
+      id: crypto.randomUUID(),
+      name: '',
+      displayOrder: roles.length,
+    };
+    onUpdate({ ...settings, staffRoleConfigs: [...roles, newRole] });
+    setEditingId(newRole.id);
+    setEditName('');
+  };
+
+  const startEdit = (role: StaffRoleConfig) => {
+    setEditingId(role.id);
+    setEditName(role.name);
+  };
+
+  const saveEdit = () => {
+    if (!editingId) return;
+    const updated = roles.map(r => r.id === editingId ? { ...r, name: editName } : r);
+    onUpdate({ ...settings, staffRoleConfigs: updated });
+    setEditingId(null);
+    setEditName('');
+  };
+
+  const cancelEdit = () => {
+    if (editingId && !roles.find(r => r.id === editingId)?.name) {
+      onUpdate({ ...settings, staffRoleConfigs: roles.filter(r => r.id !== editingId) });
+    }
+    setEditingId(null);
+    setEditName('');
+  };
+
+  const deleteRole = (id: string) => {
+    const updated = roles.filter(r => r.id !== id).map((r, i) => ({ ...r, displayOrder: i }));
+    onUpdate({ ...settings, staffRoleConfigs: updated });
+  };
+
+  const moveRole = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= roles.length) return;
+    const next = [...roles];
+    [next[index], next[newIndex]] = [next[newIndex], next[index]];
+    const reordered = next.map((r, i) => ({ ...r, displayOrder: i }));
+    onUpdate({ ...settings, staffRoleConfigs: reordered });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-headline">スタッフ役職設定</h3>
+        <button onClick={addRole} className="px-3 py-1.5 bg-button text-white text-xs rounded-lg hover:bg-button/90 transition-colors">
+          + 新規追加
+        </button>
+      </div>
+      <p className="text-sm text-paragraph/60">スタッフの役職を管理します。ここでの設定は職員一覧・シフト管理などに反映されます。</p>
+
+      {roles.length === 0 && (
+        <div className="text-center py-12 text-paragraph/50">
+          <p className="text-lg mb-2">役職が未登録です</p>
+          <p className="text-sm">「+ 新規追加」ボタンから役職を作成してください</p>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {roles.map((role, index) => (
+          <div key={role.id} className="bg-surface rounded-lg border border-secondary/20 p-3">
+            {editingId === role.id ? (
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  placeholder="例: 園長"
+                  className="flex-1 px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-button/30"
+                  autoFocus
+                  onKeyDown={e => { if (e.key === 'Enter' && editName.trim()) saveEdit(); if (e.key === 'Escape') cancelEdit(); }}
+                />
+                <button onClick={cancelEdit} className="px-3 py-1.5 text-sm text-paragraph/70 hover:text-paragraph">キャンセル</button>
+                <button onClick={saveEdit} disabled={!editName.trim()} className="px-4 py-1.5 bg-button text-white text-sm rounded-lg hover:bg-button/90 disabled:opacity-40">保存</button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-0.5">
+                    <button onClick={() => moveRole(index, -1)} disabled={index === 0} className="text-paragraph/40 hover:text-paragraph disabled:opacity-20">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                    </button>
+                    <button onClick={() => moveRole(index, 1)} disabled={index === roles.length - 1} className="text-paragraph/40 hover:text-paragraph disabled:opacity-20">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                  </div>
+                  <span className="font-medium text-headline">{role.name}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => startEdit(role)} className="text-xs px-2 py-1 text-button hover:bg-button/10 rounded">編集</button>
+                  <button onClick={() => deleteRole(role.id)} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded">削除</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionJ({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
+  const hiddenItems = settings.menuVisibility?.hiddenItems ?? [];
+
+  // navigation.ts のすべてのメニュー項目を収集
+  const allItems = [
+    ...topNavItems.map(item => ({ href: item.href, label: item.label, section: 'トップ' })),
+    ...navSections.flatMap(section =>
+      section.items.map(item => ({ href: item.href, label: item.label, section: section.label }))
+    ),
+  ];
+
+  const toggleItem = (href: string) => {
+    // 設定ページ自身は非表示不可
+    if (href === '/settings') return;
+    const current = new Set(hiddenItems);
+    if (current.has(href)) {
+      current.delete(href);
+    } else {
+      current.add(href);
+    }
+    onUpdate({
+      ...settings,
+      menuVisibility: { hiddenItems: Array.from(current) },
+    });
+  };
+
+  const groupedItems: { section: string; items: typeof allItems }[] = [];
+  for (const item of allItems) {
+    const existing = groupedItems.find(g => g.section === item.section);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      groupedItems.push({ section: item.section, items: [item] });
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <h3 className="font-bold text-headline">メニュー表示設定</h3>
+      <p className="text-sm text-paragraph/60">サイドバーに表示するメニュー項目を選択します。非表示にした項目はサイドバーから隠れます。</p>
+
+      <div className="space-y-4">
+        {groupedItems.map(group => (
+          <div key={group.section}>
+            <h4 className="text-xs font-medium text-paragraph/60 uppercase tracking-wider mb-2">{group.section}</h4>
+            <div className="space-y-1">
+              {group.items.map(item => {
+                const isHidden = hiddenItems.includes(item.href);
+                const isSettings = item.href === '/settings';
+                return (
+                  <label
+                    key={item.href}
+                    className={`flex items-center justify-between p-3 rounded-lg border border-secondary/20 ${isSettings ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-secondary/10'}`}
+                  >
+                    <span className="text-sm text-headline">{item.label}</span>
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={!isHidden}
+                        onChange={() => toggleItem(item.href)}
+                        disabled={isSettings}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-paragraph/20 peer-checked:bg-button rounded-full transition-colors" />
+                      <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform" />
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionK({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
+  const config = settings.llmConfig ?? { provider: 'gemini' as LLMProvider, apiKey: '', model: '' };
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const updateConfig = (patch: Partial<typeof config>) => {
+    const next = { ...config, ...patch };
+    // プロバイダー変更時にモデルをリセット
+    if (patch.provider && patch.provider !== config.provider) {
+      next.model = llmProviderOptions[patch.provider].models[0].id;
+    }
+    onUpdate({ ...settings, llmConfig: next });
+  };
+
+  const runTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/llm/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: config.provider, apiKey: config.apiKey, model: config.model }),
+      });
+      const json = await res.json();
+      setTestResult({ ok: res.ok, message: json.message ?? json.error ?? '不明なエラー' });
+    } catch (err) {
+      setTestResult({ ok: false, message: err instanceof Error ? err.message : '接続失敗' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const providerOpts = Object.entries(llmProviderOptions).map(([key, val]) => ({
+    value: key,
+    label: val.label,
+  }));
+
+  const modelOpts = llmProviderOptions[config.provider]?.models ?? [];
+
+  return (
+    <div className="space-y-4">
+      <h3 className="font-bold text-headline">音声メモLLM設定</h3>
+      <p className="text-sm text-paragraph/60">音声メモの文字起こし・要約に使用するLLMプロバイダーを設定します。</p>
+
+      <div className="space-y-4 max-w-lg">
+        <SelectField
+          label="プロバイダー"
+          value={config.provider}
+          onChange={v => updateConfig({ provider: v as LLMProvider })}
+          options={providerOpts}
+        />
+
+        <div>
+          <label className="block text-xs font-medium text-paragraph/70 mb-1">APIキー</label>
+          <input
+            type="password"
+            value={config.apiKey}
+            onChange={e => updateConfig({ apiKey: e.target.value })}
+            placeholder="sk-... / AIza..."
+            className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm text-paragraph font-mono focus:outline-none focus:ring-2 focus:ring-button/30"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-paragraph/70 mb-1">モデル</label>
+          <select
+            value={config.model || modelOpts[0]?.id || ''}
+            onChange={e => updateConfig({ model: e.target.value })}
+            className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm text-paragraph focus:outline-none focus:ring-2 focus:ring-button/30"
+          >
+            {modelOpts.map(m => (
+              <option key={m.id} value={m.id}>{m.label} ({m.id})</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={runTest}
+            disabled={testing || !config.apiKey}
+            className="px-4 py-2 bg-button text-white text-sm rounded-lg hover:bg-button/90 disabled:opacity-40 transition-colors"
+          >
+            {testing ? '接続テスト中...' : '接続テスト'}
+          </button>
+          {testResult && (
+            <span className={`text-sm ${testResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+              {testResult.ok ? '接続成功' : testResult.message}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { settings, updateSettings, shiftPatterns, setShiftPatterns } = useApp();
   const [activeTab, setActiveTab] = useState<TabId>('H');
@@ -692,13 +732,11 @@ export default function SettingsPage() {
   const renderSection = () => {
     switch (activeTab) {
       case 'A': return <SectionA settings={settings} onUpdate={updateSettings} />;
-      case 'B': return <SectionB settings={settings} onUpdate={updateSettings} />;
-      case 'C': return <SectionC settings={settings} onUpdate={updateSettings} />;
-      case 'D': return <SectionD settings={settings} onUpdate={updateSettings} />;
-      case 'E': return <SectionE settings={settings} onUpdate={updateSettings} />;
-      case 'F': return <SectionF settings={settings} onUpdate={updateSettings} />;
       case 'G': return <SectionG patterns={shiftPatterns} onUpdate={setShiftPatterns} />;
       case 'H': return <SectionH settings={settings} onUpdate={updateSettings} />;
+      case 'I': return <SectionI settings={settings} onUpdate={updateSettings} />;
+      case 'J': return <SectionJ settings={settings} onUpdate={updateSettings} />;
+      case 'K': return <SectionK settings={settings} onUpdate={updateSettings} />;
     }
   };
 
@@ -707,7 +745,7 @@ export default function SettingsPage() {
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
         <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4">
           <h1 className="text-xl font-bold text-headline">園の設定</h1>
-          <p className="text-sm text-paragraph/60 mt-1">学校基本調査の項目構造に基づく設定</p>
+          <p className="text-sm text-paragraph/60 mt-1">クラス・役職・メニュー表示・LLM接続などの管理</p>
         </div>
       </header>
 
