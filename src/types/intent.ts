@@ -64,4 +64,6 @@ export interface InputMessage {
   linkedChildIds?: string[];
   linkedToGrowthRecordId?: string;
   ruleAnswer?: { answer: string; referencedRuleIds: string[] };
+  /** 送信時に🚨トグルONだった入力。AI分類は保持しつつFloatingPopupで incident としてpre-selectされ、確定時に intent=incident/severity=high に強制される */
+  isEmergency?: boolean;
 }

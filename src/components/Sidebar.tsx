@@ -183,7 +183,8 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
         )}
         <button
           onClick={onToggle}
-          className="p-2 rounded-lg hover:bg-secondary/20 transition-colors text-paragraph/60 hover:text-paragraph"
+          aria-label={isCollapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+          className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-secondary/20 transition-colors text-paragraph/60 hover:text-paragraph"
         >
           {isCollapsed ? (
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

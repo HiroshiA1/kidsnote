@@ -193,13 +193,14 @@ function ChildListItem({ child, fiscalYear, onDelete }: { child: ChildWithGrowth
             </span>
           </div>
 
-          {/* 削除ボタン */}
+          {/* 削除ボタン (destructive: 48×48) */}
           <button
             onClick={handleDeleteClick}
-            className="p-1.5 text-paragraph/40 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
-            title="削除"
+            className="w-12 h-12 flex items-center justify-center text-paragraph/40 hover:text-alert hover:bg-alert/10 rounded-lg transition-colors flex-shrink-0"
+            title={`${child.lastName} ${child.firstName} を削除`}
+            aria-label={`${child.lastName} ${child.firstName} を削除`}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
@@ -215,7 +216,7 @@ function ChildListItem({ child, fiscalYear, onDelete }: { child: ChildWithGrowth
 }
 
 export default function ChildrenPage() {
-  const { children: allChildren, addChild, removeChild, fiscalYear } = useApp();
+  const { children: allChildren, addChild, removeChild, fiscalYear, openConfirm, messages, attendance } = useApp();
   // 選択年度に在園している園児のみを対象にする
   const childrenData = useMemo(
     () => allChildren.filter((c) => isEnrolledInFiscalYear(c.birthDate, fiscalYear)),
@@ -225,11 +226,39 @@ export default function ChildrenPage() {
   const [showCsvImportModal, setShowCsvImportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handleDelete = (child: ChildWithGrowth) => {
+  const handleDelete = async (child: ChildWithGrowth) => {
     const name = `${child.lastNameKanji || child.lastName} ${child.firstNameKanji || child.firstName}`.trim();
-    if (window.confirm(`${name} さんを削除しますか？\nこの操作は取り消せません。`)) {
-      removeChild(child.id);
-    }
+    const nameVariants = [
+      child.firstName, child.lastName,
+      child.firstNameKanji, child.lastNameKanji,
+      `${child.lastName}${child.firstName}`.trim(),
+      `${child.lastNameKanji ?? ''}${child.firstNameKanji ?? ''}`.trim(),
+    ].filter((n): n is string => !!n && n.length >= 2);
+    // 成長記録: linkedChildIds直接 + 名前フォールバック(古い記録用) + 事前集計評価
+    const growthByLinked = messages.filter(
+      m => m.status === 'saved' && m.result?.intent === 'growth' && m.linkedChildIds?.includes(child.id),
+    ).length;
+    const growthByNameOnly = messages.filter(
+      m =>
+        m.status === 'saved' &&
+        m.result?.intent === 'growth' &&
+        !m.linkedChildIds?.includes(child.id) &&
+        nameVariants.some(n => m.content.includes(n)),
+    ).length;
+    const growthCount = growthByLinked + growthByNameOnly + (child.growthEvaluations?.length ?? 0);
+    const attendanceCount = attendance.filter(a => a.childId === child.id).length;
+    const confirmed = await openConfirm({
+      title: `${name} さんを削除します`,
+      message: '園児情報のみ削除されます。関連する成長記録・出欠記録は残ります(Phase 2で退園処理に切り替え予定)。',
+      type: 'danger',
+      influenceScope: [
+        { label: '関連する成長記録', count: growthCount },
+        { label: '関連する出欠記録', count: attendanceCount, unit: '日分' },
+      ],
+      typedConfirm: { keyword: '削除' },
+      confirmLabel: '削除する',
+    });
+    if (confirmed) removeChild(child.id);
   };
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');

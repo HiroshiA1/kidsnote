@@ -15,6 +15,7 @@ export interface ClassifyPayload {
 
 export interface ConfirmPayload {
   messageId: string;
+  emergency?: boolean;
 }
 
 export interface EditPayload {

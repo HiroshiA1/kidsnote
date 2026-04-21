@@ -11,14 +11,15 @@ export interface Attachment {
 }
 
 interface SmartInputProps {
-  onSubmit: (text: string, attachments?: Attachment[]) => void;
+  onSubmit: (text: string, attachments?: Attachment[], options?: { emergency?: boolean }) => void | Promise<void>;
   isProcessing?: boolean;
   placeholder?: string;
   sidebarCollapsed?: boolean;
   selectedChildName?: string | null;
+  onError?: (message: string) => void;
 }
 
-export function SmartInput({ onSubmit, isProcessing = false, placeholder, sidebarCollapsed = false, selectedChildName }: SmartInputProps) {
+export function SmartInput({ onSubmit, isProcessing = false, placeholder, sidebarCollapsed = false, selectedChildName, onError }: SmartInputProps) {
   const [input, setInput] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -26,6 +27,7 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
   const [speechSupported, setSpeechSupported] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [emergencyMode, setEmergencyMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -67,7 +69,7 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
         recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
           // "aborted"はユーザー操作やクリーンアップによる正常な停止なので無視
           if (event.error !== 'aborted') {
-            console.error('Speech recognition error:', event.error);
+            onError?.(`音声入力でエラーが発生しました (${event.error})`);
           }
           setIsListening(false);
           setInterimTranscript('');
@@ -110,18 +112,27 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showAttachMenu]);
 
-  const handleSubmit = useCallback(() => {
-    if ((input.trim() || attachments.length > 0) && !isProcessing) {
-      // 音声入力中なら停止
-      if (isListening && recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      onSubmit(input.trim(), attachments.length > 0 ? attachments : undefined);
+  const handleSubmit = useCallback(async () => {
+    if (!((input.trim() || attachments.length > 0) && !isProcessing)) return;
+    // 音声入力中なら停止
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    try {
+      await onSubmit(
+        input.trim(),
+        attachments.length > 0 ? attachments : undefined,
+        emergencyMode ? { emergency: true } : undefined,
+      );
+      // 成功時のみクリア・緊急OFF(失敗時は入力内容と緊急モードを保持して再送信可能に)
       setInput('');
       setInterimTranscript('');
       setAttachments([]);
+      setEmergencyMode(false);
+    } catch {
+      // addMessage 側で Toast 通知済みなのでここでは状態保持のみ
     }
-  }, [input, attachments, isProcessing, isListening, onSubmit]);
+  }, [input, attachments, isProcessing, isListening, onSubmit, emergencyMode]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -168,17 +179,24 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
       try {
         recognitionRef.current.start();
         setIsListening(true);
-      } catch (error) {
-        console.error('Failed to start speech recognition:', error);
+      } catch {
+        onError?.('音声入力を開始できませんでした');
       }
     }
-  }, [isListening]);
+  }, [isListening, onError]);
 
   const displayText = input + (interimTranscript ? interimTranscript : '');
 
   return (
     <div className={`fixed bottom-0 right-0 p-3 sm:p-4 bg-background border-t border-secondary/20 transition-all duration-300 left-0 ${sidebarCollapsed ? 'md:left-16' : 'md:left-64'}`}>
       <div className="max-w-3xl mx-auto">
+        {/* 緊急モードインジケーター */}
+        {emergencyMode && (
+          <div className="flex items-center justify-center gap-2 mb-2 py-2 px-4 bg-alert/15 border border-alert/40 rounded-full">
+            <span className="text-lg">🚨</span>
+            <span className="text-sm font-medium text-alert">緊急モード: ヒヤリハット(重要度:高)として確認画面に出ます</span>
+          </div>
+        )}
         {/* 音声入力中のインジケーター */}
         {isListening && (
           <div className="flex items-center justify-center gap-2 mb-2 py-2 px-4 bg-button/20 rounded-full">
@@ -214,7 +232,8 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
                 )}
                 <button
                   onClick={() => removeAttachment(attachment.id)}
-                  className="absolute -top-1 -right-1 w-5 h-5 bg-alert text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={`添付「${attachment.name}」を外す`}
+                  className="absolute -top-2 -right-2 w-7 h-7 bg-alert text-white rounded-full flex items-center justify-center text-sm shadow-md hover:scale-110 transition-transform"
                 >
                   ×
                 </button>
@@ -239,7 +258,7 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
           </div>
         )}
 
-        <div className="flex items-end gap-3 p-3 bg-surface rounded-2xl shadow-lg border border-secondary/30">
+        <div className={`flex items-end gap-3 p-3 bg-surface rounded-2xl shadow-lg border transition-colors ${emergencyMode ? 'border-alert ring-2 ring-alert/30' : 'border-secondary/30'}`}>
           {/* [＋] ボタン */}
           <div className="relative" ref={menuRef}>
             <button
@@ -316,11 +335,32 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
             onKeyDown={handleKeyDown}
             onCompositionStart={() => setIsComposing(true)}
             onCompositionEnd={() => setIsComposing(false)}
-            placeholder={placeholder || "何でも話しかけてください...（記録・申し送り・報告など）"}
+            placeholder={
+              emergencyMode
+                ? '何が起きたか、誰が、どこで...（例: 年中太郎くん、滑り台で転倒）'
+                : (placeholder || "何でも話しかけてください...（記録・申し送り・報告など）")
+            }
             className="flex-1 resize-none bg-transparent text-paragraph placeholder:text-paragraph/50 focus:outline-none min-h-[44px] max-h-[120px] py-2"
             rows={1}
             disabled={isProcessing}
           />
+
+          {/* 緊急モードトグル (🚨) */}
+          <button
+            type="button"
+            onClick={() => setEmergencyMode(v => !v)}
+            disabled={isProcessing}
+            aria-pressed={emergencyMode}
+            aria-label={emergencyMode ? '緊急ヒヤリハットモードを解除' : '緊急ヒヤリハットモードを有効化'}
+            className={`flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-xl transition-all ${
+              emergencyMode
+                ? 'bg-alert text-white ring-2 ring-alert/40'
+                : 'bg-secondary/30 hover:bg-secondary/50'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={emergencyMode ? '緊急モード解除' : '緊急(ヒヤリハット)として送信'}
+          >
+            🚨
+          </button>
 
           {/* 音声入力ボタン */}
           {speechSupported && (

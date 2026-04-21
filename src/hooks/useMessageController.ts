@@ -66,117 +66,165 @@ export function useMessageController({
     return [...new Set(names)];
   }, [staffData]);
 
-  const addMessage = useCallback(async (text: string, _attachments?: Attachment[]) => {
+  const addMessage = useCallback(async (text: string, _attachments?: Attachment[], options?: { emergency?: boolean }) => {
+    const isEmergency = options?.emergency ?? false;
     const newMessage: InputMessage = {
       id: crypto.randomUUID(),
       content: text,
       timestamp: new Date(),
       status: 'processing',
+      isEmergency: isEmergency || undefined,
     };
 
     setMessages(prev => [newMessage, ...prev]);
     setIsProcessing(true);
 
-    // 選択中の園児がいればコンテキストを付与してGeminiに送信
-    const selectedChild = selectedChildId ? childrenData.find(c => c.id === selectedChildId) : null;
-    const classifyText = selectedChild ? buildChildContext(selectedChild) + text : text;
+    let resultForLog: IntentResult | undefined;
 
-    const { intent: result, matchedChildIds } = await classifyInputAction(
-      classifyText,
-      collectChildEntries(),
-      collectExtraNames(),
-    );
+    try {
+      // 選択中の園児がいればコンテキストを付与してGeminiに送信
+      const selectedChild = selectedChildId ? childrenData.find(c => c.id === selectedChildId) : null;
+      const classifyText = selectedChild ? buildChildContext(selectedChild) + text : text;
 
-    // selectedChildIdがある場合、matchedChildIdsにマージ
-    const linkedChildIds = selectedChildId && !matchedChildIds.includes(selectedChildId)
-      ? [selectedChildId, ...matchedChildIds]
-      : matchedChildIds;
-
-    if (result?.intent === 'rule_query') {
-      const rulesContext = rules.map(r => ({
-        id: r.id,
-        title: r.title,
-        content: r.content,
-        category: r.category,
-      }));
-
-      try {
-        const ruleResult = await askRulesAction(
-          text,
-          rulesContext,
-          undefined,
-          collectChildEntries(),
-          collectExtraNames()
-        );
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === newMessage.id
-              ? { ...msg, result, status: 'confirmed', linkedChildIds, ruleAnswer: ruleResult }
-              : msg
-          )
-        );
-      } catch {
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === newMessage.id
-              ? {
-                ...msg,
-                result,
-                status: 'confirmed',
-                linkedChildIds,
-                ruleAnswer: { answer: 'エラーが発生しました。もう一度お試しください。', referencedRuleIds: [] },
-              }
-              : msg
-          )
-        );
-      }
-    } else {
-      const hasSafetyHit = SAFETY_KEYWORDS.some(kw => text.includes(kw));
-      const isHighConfidence = result?.confidence !== undefined && result.confidence >= 0.9;
-      const shouldAutoSave = isHighConfidence && !hasSafetyHit && result?.intent !== 'add_child' && result?.intent !== 'add_staff';
-
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === newMessage.id
-            ? { ...msg, result, status: shouldAutoSave ? 'saved' : 'confirmed', linkedChildIds }
-            : msg
-        )
+      const { intent: result, matchedChildIds } = await classifyInputAction(
+        classifyText,
+        collectChildEntries(),
+        collectExtraNames(),
       );
+      resultForLog = result ?? undefined;
 
-      if (shouldAutoSave && result) {
-        const intentLabels: Record<string, string> = {
-          growth: '成長記録', incident: 'ヒヤリハット', handover: '申し送り', child_update: '園児情報更新',
-        };
-        addToast({
-          message: `${intentLabels[result.intent] ?? result.intent}として自動保存しました`,
-          type: 'success',
-          action: {
-            label: '取り消す',
-            onClick: () => {
-              setMessages(prev =>
-                prev.map(msg =>
-                  msg.id === newMessage.id ? { ...msg, status: 'confirmed' } : msg
-                )
-              );
+      // selectedChildIdがある場合、matchedChildIdsにマージ
+      const linkedChildIds = selectedChildId && !matchedChildIds.includes(selectedChildId)
+        ? [selectedChildId, ...matchedChildIds]
+        : matchedChildIds;
+
+      if (result?.intent === 'rule_query') {
+        const rulesContext = rules.map(r => ({
+          id: r.id,
+          title: r.title,
+          content: r.content,
+          category: r.category,
+        }));
+
+        try {
+          const ruleResult = await askRulesAction(
+            text,
+            rulesContext,
+            undefined,
+            collectChildEntries(),
+            collectExtraNames()
+          );
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === newMessage.id
+                ? { ...msg, result, status: 'confirmed', linkedChildIds, ruleAnswer: ruleResult }
+                : msg
+            )
+          );
+        } catch {
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === newMessage.id
+                ? {
+                  ...msg,
+                  result,
+                  status: 'confirmed',
+                  linkedChildIds,
+                  ruleAnswer: { answer: 'エラーが発生しました。もう一度お試しください。', referencedRuleIds: [] },
+                }
+                : msg
+            )
+          );
+        }
+      } else {
+        const hasSafetyHit = SAFETY_KEYWORDS.some(kw => text.includes(kw));
+        const isHighConfidence = result?.confidence !== undefined && result.confidence >= 0.9;
+        // 緊急モードは必ず教諭の目視確認を経るため autoSave をスキップ
+        const shouldAutoSave = isHighConfidence && !hasSafetyHit && !isEmergency && result?.intent !== 'add_child' && result?.intent !== 'add_staff';
+
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === newMessage.id
+              ? { ...msg, result, status: shouldAutoSave ? 'saved' : 'confirmed', linkedChildIds }
+              : msg
+          )
+        );
+
+        if (shouldAutoSave && result) {
+          const intentLabels: Record<string, string> = {
+            growth: '成長記録', incident: 'ヒヤリハット', handover: '申し送り', child_update: '園児情報更新',
+          };
+          addToast({
+            message: `${intentLabels[result.intent] ?? result.intent}として自動保存しました`,
+            type: 'success',
+            action: {
+              label: '取り消す',
+              onClick: () => {
+                setMessages(prev =>
+                  prev.map(msg =>
+                    msg.id === newMessage.id ? { ...msg, status: 'confirmed' } : msg
+                  )
+                );
+              },
             },
-          },
-          duration: 6000,
+            duration: 6000,
+          });
+        }
+      }
+    } catch (err) {
+      // 分類失敗時は該当messageを削除しToastで通知、呼び出し側に失敗を伝える
+      setMessages(prev => prev.filter(m => m.id !== newMessage.id));
+      addToast({
+        message: `入力の処理に失敗しました: ${(err as Error).message ?? '不明なエラー'}`,
+        type: 'error',
+      });
+      throw err;
+    } finally {
+      setIsProcessing(false);
+      if (resultForLog) {
+        recordActivity('classify', {
+          inputText: text,
+          intent: resultForLog.intent,
+          confidence: resultForLog.confidence,
         });
       }
-    }
-    setIsProcessing(false);
-
-    if (result) {
-      recordActivity('classify', {
-        inputText: text,
-        intent: result.intent,
-        confidence: result.confidence,
-      });
     }
   }, [setMessages, collectChildEntries, collectExtraNames, rules, addToast, selectedChildId, childrenData]);
 
   const confirmMessage = useCallback((messageId: string) => {
     const message = messages.find(m => m.id === messageId);
+
+    // 緊急モードは intent=incident, severity=high を強制
+    if (message?.isEmergency && message.result) {
+      const existingData = message.result.data as Partial<{ severity: string; description: string; location: string; cause: string; child_name: string }>;
+      // AI分類がhandoverなど別intentだった場合、descriptionは無いか空文字の可能性があるので元文言へフォールバック
+      const description =
+        existingData.description && existingData.description.trim().length > 0
+          ? existingData.description
+          : message.content;
+      const incidentResult: IntentResult = {
+        intent: 'incident',
+        data: {
+          severity: 'high',
+          description,
+          location: existingData.location ?? '',
+          cause: existingData.cause ?? '',
+          child_name: existingData.child_name ?? '',
+        },
+        confidence: 1,
+      };
+      setMessages(prev =>
+        prev.map(msg => (msg.id === messageId ? { ...msg, result: incidentResult, status: 'saved' } : msg)),
+      );
+      recordActivity('classify_confirm', { messageId, emergency: true });
+      recordAudit({
+        event_type: 'message.confirm',
+        target_type: 'message',
+        target_id: messageId,
+        payload: { intent: 'incident', emergency: true },
+      });
+      return;
+    }
 
     if (message?.result) {
       if (message.result.intent === 'add_child') {

@@ -24,6 +24,11 @@ export function FloatingPopup({ sidebarCollapsed }: FloatingPopupProps) {
   const queueCount = pendingMessages.length;
 
   const handleConfirm = () => {
+    // 緊急モードは最優先 — rule_query 分岐より前に confirmMessage へ流して incident/high 強制を発火させる
+    if (current.isEmergency) {
+      confirmMessage(current.id);
+      return;
+    }
     if (current.result?.intent === 'rule_query') {
       // rule_query は dismiss のみ
       setDismissed(prev => [...prev, current.id]);
@@ -42,17 +47,26 @@ export function FloatingPopup({ sidebarCollapsed }: FloatingPopupProps) {
 
   const config = current.result ? intentConfig[current.result.intent] : null;
   const isRuleQuery = current.result?.intent === 'rule_query';
+  const isEmergency = current.isEmergency === true;
+  const aiIntent = current.result?.intent;
+  const aiMisalignedWithEmergency = isEmergency && aiIntent && aiIntent !== 'incident';
 
   return (
     <div
       className="fixed bottom-24 z-30 w-96 max-w-[calc(100vw-2rem)] transition-all duration-300 right-3 sm:right-6"
     >
-      <div className={`rounded-xl shadow-lg border overflow-hidden ${config ? `${config.bgColor} ${config.borderColor}` : 'bg-surface border-secondary/30'}`}>
+      <div className={`rounded-xl shadow-lg border overflow-hidden ${
+        isEmergency
+          ? 'bg-alert/10 border-alert'
+          : config ? `${config.bgColor} ${config.borderColor}` : 'bg-surface border-secondary/30'
+      }`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-paragraph/10">
           <div className="flex items-center gap-2">
-            {config && <span className="text-lg">{config.icon}</span>}
-            <span className="font-medium text-headline text-sm">{config?.label ?? '処理中...'}</span>
+            {isEmergency ? <span className="text-lg">🚨</span> : config && <span className="text-lg">{config.icon}</span>}
+            <span className="font-medium text-headline text-sm">
+              {isEmergency ? '緊急ヒヤリハット (重要度:高)' : (config?.label ?? '処理中...')}
+            </span>
           </div>
           {queueCount > 1 && (
             <span className="text-xs bg-button text-white px-2 py-0.5 rounded-full">
@@ -60,6 +74,13 @@ export function FloatingPopup({ sidebarCollapsed }: FloatingPopupProps) {
             </span>
           )}
         </div>
+
+        {aiMisalignedWithEmergency && config && (
+          <div className="px-4 py-2 bg-alert/5 border-b border-alert/20 text-xs text-paragraph">
+            AIは「{config.label}」と判断しましたが、緊急モードで送信されたため
+            <span className="font-medium text-alert">ヒヤリハット(重要度:高)</span>として記録します。
+          </div>
+        )}
 
         {/* Content */}
         <div className="px-4 py-3">
@@ -101,9 +122,11 @@ export function FloatingPopup({ sidebarCollapsed }: FloatingPopupProps) {
             <div className="flex gap-2">
               <button
                 onClick={handleConfirm}
-                className="flex-1 py-2 px-3 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                className={`flex-1 py-2 px-3 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity ${
+                  isEmergency ? 'bg-alert' : 'bg-button'
+                }`}
               >
-                {config?.actionLabel ?? '確認'}
+                {isEmergency ? '🚨 緊急登録する' : (config?.actionLabel ?? '確認')}
               </button>
               {!isRuleQuery && (
                 <button

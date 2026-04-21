@@ -17,6 +17,7 @@ import { FloatingPopup } from './FloatingPopup';
 import { AppRole } from '@/lib/supabase/auth';
 import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit';
 import { ToastContainer, useToast, ToastMessage } from './Toast';
+import { ConfirmDialogContainer, useConfirm, ConfirmOptions } from './ConfirmDialog';
 import { recordActivity } from '@/lib/activityLog';
 import { useHydration } from '@/hooks/useHydration';
 import { useMessageController } from '@/hooks/useMessageController';
@@ -40,7 +41,7 @@ export interface Staff {
 
 interface AppContextType {
   messages: InputMessage[];
-  addMessage: (content: string, attachments?: Attachment[]) => Promise<void>;
+  addMessage: (content: string, attachments?: Attachment[], options?: { emergency?: boolean }) => Promise<void>;
   confirmMessage: (id: string) => void;
   editMessage: (id: string, newIntent: IntentResult['intent']) => void;
   cancelMessage: (id: string) => void;
@@ -81,6 +82,7 @@ interface AppContextType {
   setCurrentStaffId: (id: string | null) => void;
   currentUserRole: AppRole | null;
   addToast: (toast: Omit<ToastMessage, 'id'>) => string;
+  openConfirm: (options: ConfirmOptions) => Promise<boolean>;
   calendarEvents: CalendarEvent[];
   addCalendarEvent: (event: CalendarEvent) => void;
   updateCalendarEvent: (event: CalendarEvent) => void;
@@ -117,6 +119,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isLoginPage = pathname === '/login';
   const { toasts, addToast, dismissToast } = useToast();
+  const { openConfirm, pending: confirmPending, resolveConfirm } = useConfirm();
 
   const {
     messages, setMessages,
@@ -337,6 +340,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         setCurrentStaffId,
         currentUserRole,
         addToast,
+        openConfirm,
         calendarEvents,
         addCalendarEvent,
         updateCalendarEvent,
@@ -390,7 +394,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </main>
         {!isLoginPage && <FloatingPopup sidebarCollapsed={sidebarCollapsed} />}
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-        {!isLoginPage && <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} selectedChildName={selectedChildId ? (() => { const c = childrenData.find(ch => ch.id === selectedChildId); return c ? `${c.lastNameKanji || c.lastName} ${c.firstNameKanji || c.firstName}`.trim() : null; })() : null} />}
+        <ConfirmDialogContainer pending={confirmPending} onResolve={resolveConfirm} />
+        {!isLoginPage && <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} selectedChildName={selectedChildId ? (() => { const c = childrenData.find(ch => ch.id === selectedChildId); return c ? `${c.lastNameKanji || c.lastName} ${c.firstNameKanji || c.firstName}`.trim() : null; })() : null} onError={(msg) => addToast({ type: 'error', message: msg })} />}
       </div>
     </AppContext.Provider>
   );

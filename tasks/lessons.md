@@ -1,3 +1,48 @@
 # Lessons Learned
 
-<!-- Record patterns and corrections here to prevent repeating mistakes -->
+## 2026-04-21 Codex レビューから(UX Phase 1)
+
+### L1: 分岐先回り → 早期returnで特殊フラグを吸収してしまう
+**症状**: 緊急モード(isEmergency=true)がrule_query分岐で `setDismissed` に吸われ、`confirmMessage` にさえ到達しなかった。
+**教訓**: 「特殊フラグ > 通常フロー」の優先順位を守る。複数分岐ハンドラでは、オーバーライド系フラグ(isEmergency, isAdmin等)を **最初に**判定すること。
+**予防策**: ハンドラのガード節を書くときは「最優先で扱うべきフラグが何か」を明文化。コメントで `// 最優先: isXxx` と書く。
+
+### L2: async 関数は必ず try/catch/finally、状態フラグは finally で戻す
+**症状**: `addMessage` が途中で例外を投げると `isProcessing = false` に戻らず、UIが永続フリーズ。
+**教訓**: `setLoading(true)` → async作業 → `setLoading(false)` の単純並びは、**必ず finally ブロックに移す**。
+**予防策**: setLoading対応のカスタムフックを作る(Phase 2候補)。または lint ルール化。
+
+### L3: `trim()` は「厳密一致」ではない
+**症状**: typed confirm で「 削除 」(前後空白)が通ってしまう設計ミス。
+**教訓**: 「厳密一致」が要件なら `===` のみ。trim はユーザー許容の判断をした上で入れる。"strict match" という言葉を使ったときに実装が strict になっているか必ず照合する。
+
+### L4: `??` 演算子は null/undefined のみ、空文字は素通し
+**症状**: `existingData.description ?? message.content` → description='' でも空文字が採用されてしまう。
+**教訓**: 空文字を弾きたいなら `trim().length > 0 ? ... : ...` か、`||` で。**`??` と `||` の違いを意識する**。
+
+### L5: 影響範囲カウントは複数の紐付けパスを横断する
+**症状**: 園児削除の「成長記録 N件」が linkedChildIds だけを見て、名前フォールバックと `child.growthEvaluations` を無視 → 件数が実際より少なく出る。
+**教訓**: 関連データが「ID直結」「名前マッチ」「別系統で保持」のいずれかの形をとる場合、**全パスを足す**。件数ゼロ表示は「消しても大丈夫」という誤判断を誘発する。
+**予防策**: 関連データ取得ユーティリティを一箇所にまとめる(Phase 2候補)。
+
+### L6: 単一state Promise パターンは同時呼び出しで宙に浮く
+**症状**: `openConfirm` を連続で2回呼ぶと、1回目の Promise が永遠に resolve されない。
+**教訓**: stateを置き換える前に、旧state の resolve を必ず呼ぶ(false)。ダイアログ・トースト・モーダルなど、Promiseを外部に渡すパターンは全て同じ落とし穴。
+
+### L7: disabled ボタンはonClickが発火しない
+**症状**: 「submit押下後のみエラー表示」設計で、保存ボタンを disabled にしたら submit が押せず、エラー文言が永遠に出ない。
+**教訓**: エラー表示トリガーに submitClick を使うなら、disabled と両立しない。代替:
+- `onBlur` で touched フラグを立てる
+- `aria-disabled="true"` にしてクリック可能なままエラー表示
+- 常時表示で初期描画時の赤字を許容する
+
+### L8: 削除影響範囲は「消える件数」と誤読される
+**症状**: 「成長記録 12件」と表示すると、「この削除で成長記録12件が一緒に消える」と読まれる。実際は園児レコードだけ消えて記録は残る。
+**教訓**: 影響範囲UIには「何が消えて、何が残るか」を明文化する。数字だけ出すのは危険。
+
+---
+
+## 活用ルール
+- セッション冒頭: 該当パターンに触れる作業があれば読み返す
+- コードレビュー時: L1〜L8 の形跡がないか目視チェック
+- 新規パターン発生時: 追記する(上書きせず)

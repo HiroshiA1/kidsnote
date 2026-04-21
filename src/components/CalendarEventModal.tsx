@@ -59,30 +59,34 @@ function emptyEvent(date: string, fiscalYear: number, startTime?: string): Calen
 }
 
 export function CalendarEventModal({ open, onClose, initialDate, initialStartTime, event }: Props) {
-  const { addCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fiscalYear, staff, settings, children: childrenData, currentStaffId, addToast } = useApp();
+  const { addCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fiscalYear, staff, settings, children: childrenData, currentStaffId, addToast, openConfirm } = useApp();
   const calendarCategories = settings.calendarCategories ?? DEFAULT_CALENDAR_CATEGORIES;
   const [form, setForm] = useState<CalendarEvent>(() =>
     event ?? emptyEvent(initialDate ?? new Date().toISOString().slice(0, 10), fiscalYear, initialStartTime)
   );
   const [childClassFilter, setChildClassFilter] = useState<string>('all');
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     if (open) {
       setForm(event ?? emptyEvent(initialDate ?? new Date().toISOString().slice(0, 10), fiscalYear, initialStartTime));
+      setSubmitAttempted(false);
     }
   }, [open, event, initialDate, initialStartTime, fiscalYear]);
 
   if (!open) return null;
 
   const isEdit = !!event;
+  const titleMissing = !form.title.trim();
+  const showTitleError = submitAttempted && titleMissing;
 
   const set = <K extends keyof CalendarEvent>(key: K, value: CalendarEvent[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
   const handleSave = async () => {
-    if (!form.title.trim()) {
-      alert('タイトルを入力してください');
+    if (titleMissing) {
+      setSubmitAttempted(true);
       return;
     }
     const payload: CalendarEvent = { ...form, updatedAt: new Date().toISOString(), ownerStaffId: form.ownerStaffId ?? currentStaffId ?? undefined };
@@ -109,7 +113,13 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
 
   const handleDelete = async () => {
     if (!event) return;
-    if (!confirm('この予定を削除しますか？')) return;
+    const confirmed = await openConfirm({
+      title: 'この予定を削除します',
+      message: event.title ? `「${event.title}」を削除します。` : undefined,
+      type: 'danger',
+      confirmLabel: '削除する',
+    });
+    if (!confirmed) return;
     if (event.googleEventId && isGoogleConnected()) {
       try {
         await deleteGoogleEvent(event.googleEventId);
@@ -126,9 +136,17 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-surface rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
-        <header className="sticky top-0 bg-surface border-b border-secondary/20 px-6 py-4 flex items-center justify-between">
+        <header className="sticky top-0 bg-surface border-b border-secondary/20 px-6 py-3 flex items-center justify-between">
           <h2 className="text-lg font-bold text-headline">{isEdit ? '予定を編集' : '予定を追加'}</h2>
-          <button onClick={onClose} className="text-paragraph/60 hover:text-paragraph">✕</button>
+          <button
+            onClick={onClose}
+            aria-label="閉じる"
+            className="w-11 h-11 flex items-center justify-center rounded-lg text-paragraph/60 hover:text-paragraph hover:bg-secondary/20 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </header>
 
         <div className="p-6 space-y-4">
@@ -139,9 +157,24 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
               type="text"
               value={form.title}
               onChange={e => set('title', e.target.value)}
-              className="w-full px-3 py-2 border border-secondary/30 rounded-md text-sm"
+              onBlur={() => {
+                // フォーカスアウト時にエラーを表示(保存ボタン disabled だと onClick が発火しないための補完)
+                if (titleMissing) setSubmitAttempted(true);
+              }}
+              className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 ${
+                showTitleError
+                  ? 'border-alert focus:ring-alert/40'
+                  : 'border-secondary/30 focus:ring-button/30'
+              }`}
               placeholder="例: 年中クラス健診"
+              aria-invalid={showTitleError}
+              aria-describedby={showTitleError ? 'calendar-title-error' : undefined}
             />
+            {showTitleError && (
+              <p id="calendar-title-error" className="text-xs text-alert mt-1">
+                タイトルを入力してください
+              </p>
+            )}
           </div>
 
           {/* 日付・時刻 */}
@@ -425,11 +458,27 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
 
         <footer className="sticky bottom-0 bg-surface border-t border-secondary/20 px-6 py-3 flex items-center justify-between">
           {isEdit ? (
-            <button onClick={handleDelete} className="text-sm text-alert hover:underline">削除</button>
+            <button
+              onClick={handleDelete}
+              className="min-h-12 px-5 rounded-lg text-sm font-medium bg-alert text-white hover:bg-alert/90 transition-colors"
+            >
+              削除
+            </button>
           ) : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-paragraph hover:bg-secondary/20 rounded-md">キャンセル</button>
-            <button onClick={handleSave} className="px-4 py-2 text-sm bg-button text-white rounded-md hover:opacity-90">保存</button>
+            <button
+              onClick={onClose}
+              className="min-h-11 px-4 rounded-lg text-sm text-paragraph hover:bg-secondary/20 border border-secondary/40 transition-colors"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={titleMissing}
+              className="min-h-12 px-5 rounded-lg text-sm font-medium bg-button text-white hover:bg-button/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              保存
+            </button>
           </div>
         </footer>
       </div>
