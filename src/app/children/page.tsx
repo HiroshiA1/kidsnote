@@ -2,34 +2,62 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { GrowthDomain, growthDomainLabels } from '@/types/child';
+import { peerRelationLabels, peerRelationColors, peerRelationIcons } from '@/types/child';
 import { useApp } from '@/components/AppLayout';
 import { ChildWithGrowth } from '@/lib/childrenStore';
-import { calculateAge } from '@/lib/formatters';
-import ChildCreateModal from '@/components/ChildCreateModal';
-import { getAgeInFiscalYear, getGradeInFiscalYear, isEnrolledInFiscalYear } from '@/lib/fiscalYear';
 
-type ViewMode = 'card' | 'list' | 'class-group';
+import ChildCreateModal from '@/components/ChildCreateModal';
+import ChildCsvImportModal from '@/components/ChildCsvImportModal';
+import { getAgeInFiscalYear, getGradeInFiscalYear, isEnrolledInFiscalYear } from '@/lib/fiscalYear';
+import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { GrowthCategoryId, GrowthEvaluation } from '@/types/growth';
+import { growthCategories } from '@/lib/constants/growthCategories';
+
+type ViewMode = 'list' | 'class-group';
 type SortKey = 'name' | 'age' | 'class' | 'grade';
 type SortOrder = 'asc' | 'desc';
 
-function GrowthLevelBadge({ level }: { level: 1 | 2 | 3 | 4 }) {
-  const colors = {
-    1: 'bg-paragraph/20 text-paragraph',
-    2: 'bg-secondary/50 text-headline',
-    3: 'bg-tertiary text-headline',
-    4: 'bg-button text-white',
-  };
+/** カテゴリ別ミニレーダー（最新評価のみ表示） */
+function CategoryMiniRadar({ categoryId, evaluations }: { categoryId: GrowthCategoryId; evaluations: GrowthEvaluation[] }) {
+  const category = growthCategories.find(c => c.id === categoryId);
+  if (!category) return null;
+
+  // 最新の評価のみ使用
+  const latest = evaluations[evaluations.length - 1];
+  if (!latest) return null;
+
+  const data = category.items.map(item => ({
+    label: item.shortLabel,
+    value: latest.scores.find(s => s.itemId === item.id)?.score ?? 0,
+  }));
+
+  // 全スコアが0なら表示しない
+  if (data.every(d => d.value === 0)) return null;
+
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full ${colors[level]}`}>
-      Lv.{level}
-    </span>
+    <div>
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span className="text-xs">{category.icon}</span>
+        <span className="text-[11px] font-medium text-headline">{category.label}</span>
+      </div>
+      <div style={{ width: '100%', height: 130 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart cx="50%" cy="50%" outerRadius="65%" data={data}>
+            <PolarGrid stroke="#e5e7eb" />
+            <PolarAngleAxis dataKey="label" tick={{ fontSize: 9, fill: '#6b7280' }} />
+            <PolarRadiusAxis domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />
+            <Radar dataKey="value" stroke={category.color} fill={category.color} fillOpacity={0.2} strokeWidth={1.5} />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }
 
-function ChildCard({ child, fiscalYear }: { child: ChildWithGrowth; fiscalYear: number }) {
+function ChildCard({ child, fiscalYear, allChildren }: { child: ChildWithGrowth; fiscalYear: number; allChildren: ChildWithGrowth[] }) {
   const age = getAgeInFiscalYear(child.birthDate, fiscalYear);
   const grade = getGradeInFiscalYear(child.birthDate, fiscalYear);
+  const relationships = (child.relationships ?? []).slice(0, 4);
 
   return (
     <Link href={`/children/${child.id}`}>
@@ -70,17 +98,38 @@ function ChildCard({ child, fiscalYear }: { child: ChildWithGrowth; fiscalYear: 
           </div>
         )}
 
-        <div className="border-t border-paragraph/10 pt-3 mt-3">
-          <p className="text-xs text-paragraph/60 mb-2">成長状況</p>
-          <div className="flex flex-wrap gap-2">
-            {child.growthLevels.map(gl => (
-              <div key={gl.domain} className="flex items-center gap-1">
-                <span className="text-xs text-paragraph/70">{growthDomainLabels[gl.domain]}</span>
-                <GrowthLevelBadge level={gl.level} />
-              </div>
+        {/* 友達関係 */}
+        {relationships.length > 0 && (
+          <div className="border-t border-paragraph/10 pt-3 mt-3">
+            <p className="text-xs text-paragraph/60 mb-2">友達関係</p>
+            <div className="flex flex-wrap gap-1.5">
+              {relationships.map(rel => {
+                const targetChild = allChildren.find(c => c.id === rel.targetChildId);
+                const name = targetChild
+                  ? `${targetChild.lastNameKanji || targetChild.lastName}`
+                  : '?';
+                const colors = peerRelationColors[rel.type];
+                return (
+                  <span
+                    key={rel.id}
+                    className={`text-xs px-2 py-0.5 rounded-full border ${colors.bg} ${colors.text} ${colors.border}`}
+                  >
+                    {peerRelationIcons[rel.type]} {name}({peerRelationLabels[rel.type]})
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 成長概要レーダーチャート（3カテゴリ） */}
+        {(child.growthEvaluations ?? []).length > 0 && (
+          <div className="border-t border-paragraph/10 pt-3 mt-3 space-y-2">
+            {(['ten_figures', 'daily_life', 'non_cognitive'] as GrowthCategoryId[]).map(catId => (
+              <CategoryMiniRadar key={catId} categoryId={catId} evaluations={child.growthEvaluations!} />
             ))}
           </div>
-        </div>
+        )}
       </div>
     </Link>
   );
@@ -173,6 +222,7 @@ export default function ChildrenPage() {
     [allChildren, fiscalYear],
   );
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCsvImportModal, setShowCsvImportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleDelete = (child: ChildWithGrowth) => {
@@ -189,10 +239,9 @@ export default function ChildrenPage() {
 
   const classes = [...new Set(childrenData.map(c => c.className))];
   const gradeOrder = ['年少', '年中', '年長'];
-  const grades = gradeOrder;
 
   const filteredAndSortedChildren = useMemo(() => {
-    let result = childrenData.filter(child => {
+    const result = childrenData.filter(child => {
       const matchesSearch =
         child.firstName.includes(searchQuery) ||
         child.lastName.includes(searchQuery) ||
@@ -272,6 +321,12 @@ export default function ChildrenPage() {
           <div className="flex items-center gap-3">
             <span className="text-sm text-paragraph/60">{filteredAndSortedChildren.length}名</span>
             <button
+              onClick={() => setShowCsvImportModal(true)}
+              className="px-3 py-1.5 border border-button/30 text-button text-sm rounded-lg hover:bg-button/5"
+            >
+              CSVインポート
+            </button>
+            <button
               onClick={() => setShowCreateModal(true)}
               className="px-3 py-1.5 bg-button text-white text-sm rounded-lg hover:bg-button/90"
             >
@@ -285,6 +340,12 @@ export default function ChildrenPage() {
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onCreate={addChild}
+      />
+      <ChildCsvImportModal
+        open={showCsvImportModal}
+        onClose={() => setShowCsvImportModal(false)}
+        onCreate={addChild}
+        fiscalYear={fiscalYear}
       />
 
       {/* 検索・フィルター・表示切替 */}
@@ -321,21 +382,10 @@ export default function ChildrenPage() {
               className={`px-3 py-2 transition-colors ${
                 viewMode === 'class-group' ? 'bg-button text-white' : 'text-paragraph hover:bg-secondary/20'
               }`}
-              title="クラス別表示"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setViewMode('card')}
-              className={`px-3 py-2 transition-colors ${
-                viewMode === 'card' ? 'bg-button text-white' : 'text-paragraph hover:bg-secondary/20'
-              }`}
               title="カード表示"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </button>
             <button
@@ -438,19 +488,13 @@ export default function ChildrenPage() {
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         {cls.children.map(child => (
-                          <ChildCard key={child.id} child={child} fiscalYear={fiscalYear} />
+                          <ChildCard key={child.id} child={child} fiscalYear={fiscalYear} allChildren={allChildren} />
                         ))}
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-            ))}
-          </div>
-        ) : viewMode === 'card' ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {filteredAndSortedChildren.map(child => (
-              <ChildCard key={child.id} child={child} fiscalYear={fiscalYear} />
             ))}
           </div>
         ) : (

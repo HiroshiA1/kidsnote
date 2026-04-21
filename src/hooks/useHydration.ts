@@ -11,7 +11,8 @@ import { AppRole } from '@/lib/supabase/auth';
 import { getCurrentFiscalYear } from '@/lib/fiscalYear';
 import type { Staff } from '@/components/AppLayout';
 import { initialStaff } from '@/lib/data/initialStaff';
-import { CalendarEvent, SupportAssignment } from '@/types/calendar';
+import { CalendarEvent, SupportAssignment, DEFAULT_CALENDAR_CATEGORIES } from '@/types/calendar';
+import { DEFAULT_RULE_CATEGORIES } from '@/types/rule';
 
 const staffRoleMap: Record<string, AppRole> = {
   '園長': 'admin',
@@ -57,7 +58,7 @@ export function useHydration() {
 
       setRules(loadFromStorage<Rule[]>(STORAGE_KEYS.rules) ?? sampleRules);
       const loadedSettings = loadFromStorage<SchoolSettings>(STORAGE_KEYS.settings) ?? defaultSchoolSettings;
-      setSettingsData({ ...loadedSettings, classes: loadedSettings.classes ?? defaultClasses });
+      setSettingsData({ ...loadedSettings, classes: loadedSettings.classes ?? defaultClasses, calendarCategories: loadedSettings.calendarCategories ?? DEFAULT_CALENDAR_CATEGORIES, ruleCategories: loadedSettings.ruleCategories ?? DEFAULT_RULE_CATEGORIES });
       setShiftPatterns(loadFromStorage<ShiftPattern[]>(STORAGE_KEYS.shiftPatterns) ?? []);
       setShiftAssignments(loadFromStorage<ShiftAssignment[]>(STORAGE_KEYS.shiftAssignments) ?? []);
       setCalendarEvents(loadFromStorage<CalendarEvent[]>(STORAGE_KEYS.calendarEvents) ?? []);

@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '@/components/AppLayout';
 import { CalendarEventModal } from '@/components/CalendarEventModal';
 import { SupportAssignmentModal } from '@/components/SupportAssignmentModal';
-import { CalendarEvent, SupportAssignment, CATEGORY_COLORS } from '@/types/calendar';
+import { CalendarEvent, SupportAssignment, CalendarCategoryConfig, DEFAULT_CALENDAR_CATEGORIES, getCategoryColor } from '@/types/calendar';
 import { GoogleCalendarConnect } from '@/components/GoogleCalendarConnect';
 
 // 時間軸設定
@@ -66,6 +66,7 @@ const weekdayNames = ['日', '月', '火', '水', '木', '金', '土'];
 
 export default function CalendarPage() {
   const { calendarEvents, supportAssignments, fiscalYear, staff, settings } = useApp();
+  const calendarCategories = settings.calendarCategories ?? DEFAULT_CALENDAR_CATEGORIES;
   const today = new Date();
   const [view, setView] = useState<ViewMode>('month');
   const [cursor, setCursor] = useState<Date>(today);
@@ -221,11 +222,12 @@ export default function CalendarPage() {
                     </div>
                     <div className="mt-1 space-y-0.5">
                       {evs.slice(0, 3).map(ev => {
-                        const c = CATEGORY_COLORS[ev.category];
+                        const c = getCategoryColor(ev.category, calendarCategories);
                         return (
                           <div
                             key={ev.id}
-                            className={`text-[10px] truncate px-1 py-0.5 rounded ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                            className={`text-[10px] truncate px-1 py-0.5 rounded ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                            style={{ backgroundColor: c.bg, color: c.text }}
                             title={ev.title}
                           >
                             {ev.title}
@@ -245,6 +247,7 @@ export default function CalendarPage() {
               weekGrid={weekGrid}
               eventsByDate={eventsByDate}
               selectedDate={selectedDate}
+              calendarCategories={calendarCategories}
               onSelectDate={setSelectedDate}
               onOpenEdit={openEdit}
               onCreateAt={(date, time) => {
@@ -261,6 +264,7 @@ export default function CalendarPage() {
               assignments={assignmentsByDate[toDateKey(cursor)] ?? []}
               staffMap={staffMap}
               classMap={classMap}
+              calendarCategories={calendarCategories}
               onOpenEdit={openEdit}
               onOpenAssignment={(a) => { setEditingAssignment(a); setSupportModalOpen(true); }}
               onCreateAt={(time) => {
@@ -275,9 +279,9 @@ export default function CalendarPage() {
 
           {/* カテゴリ凡例 */}
           <div className="mt-4 flex flex-wrap gap-2">
-            {Object.entries(CATEGORY_COLORS).map(([cat, c]) => (
-              <span key={cat} className="inline-flex items-center gap-1 text-[10px] text-paragraph/70">
-                <span className={`w-2 h-2 rounded-full ${c.dot}`} />{cat}
+            {calendarCategories.map(cat => (
+              <span key={cat.id} className="inline-flex items-center gap-1 text-[10px] text-paragraph/70">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}
               </span>
             ))}
           </div>
@@ -302,7 +306,7 @@ export default function CalendarPage() {
           ) : (
             <div className="space-y-2">
               {dayEvents.map(ev => {
-                const c = CATEGORY_COLORS[ev.category];
+                const c = getCategoryColor(ev.category, calendarCategories);
                 return (
                   <button
                     key={ev.id}
@@ -310,8 +314,8 @@ export default function CalendarPage() {
                     className="w-full text-left border border-secondary/20 rounded-lg p-3 hover:bg-secondary/10 transition-colors"
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`w-2 h-2 rounded-full ${c.dot}`} />
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${c.bg} ${c.text}`}>{ev.category}</span>
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.dot }} />
+                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: c.bg, color: c.text }}>{ev.category}</span>
                       {ev.status === 'cancelled' && <span className="text-[10px] text-alert">中止</span>}
                       {ev.status === 'done' && <span className="text-[10px] text-paragraph/50">完了</span>}
                     </div>
@@ -361,6 +365,7 @@ function DayTimelineView({
   assignments,
   staffMap,
   classMap,
+  calendarCategories,
   onOpenEdit,
   onOpenAssignment,
   onCreateAt,
@@ -371,6 +376,7 @@ function DayTimelineView({
   assignments: SupportAssignment[];
   staffMap: Record<string, string>;
   classMap: Record<string, string>;
+  calendarCategories: CalendarCategoryConfig[];
   onOpenEdit: (ev: CalendarEvent) => void;
   onOpenAssignment: (a: SupportAssignment) => void;
   onCreateAt: (time: string) => void;
@@ -446,12 +452,13 @@ function DayTimelineView({
         <div className="px-4 py-2 border-b border-secondary/20 space-y-1">
           <div className="text-[9px] text-paragraph/50">終日</div>
           {allDay.map(ev => {
-            const c = CATEGORY_COLORS[ev.category];
+            const c = getCategoryColor(ev.category, calendarCategories);
             return (
               <button
                 key={ev.id}
                 onClick={() => onOpenEdit(ev)}
-                className={`block w-full text-left text-xs px-2 py-1 rounded ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                className={`block w-full text-left text-xs px-2 py-1 rounded ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                style={{ backgroundColor: c.bg, color: c.text }}
               >
                 {ev.title}
               </button>
@@ -509,18 +516,20 @@ function DayTimelineView({
               const pos = positions.get(ev.id) ?? { col: 0, colSpan: 1 };
               const widthPct = 100 / pos.colSpan;
               const leftPct = widthPct * pos.col;
-              const c = CATEGORY_COLORS[ev.category];
+              const c = getCategoryColor(ev.category, calendarCategories);
               return (
                 <button
                   key={ev.id}
                   onClick={(e) => { e.stopPropagation(); onOpenEdit(ev); }}
-                  className={`absolute overflow-hidden rounded px-1.5 py-0.5 text-left text-[11px] shadow-sm ${c.bg} ${c.text} border border-white ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                  className={`absolute overflow-hidden rounded px-1.5 py-0.5 text-left text-[11px] shadow-sm border border-white ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
                   style={{
                     top: `${top}px`,
                     height: `${height}px`,
                     left: `calc(${leftPct}% + 2px)`,
                     width: `calc(${widthPct}% - 4px)`,
                     zIndex: 10,
+                    backgroundColor: c.bg,
+                    color: c.text,
                   }}
                   title={`${ev.startTime ?? ''}${ev.endTime ? '-' + ev.endTime : ''} ${ev.title}`}
                 >
@@ -578,6 +587,7 @@ function WeekTimelineView({
   weekGrid,
   eventsByDate,
   selectedDate,
+  calendarCategories,
   onSelectDate,
   onOpenEdit,
   onCreateAt,
@@ -585,6 +595,7 @@ function WeekTimelineView({
   weekGrid: Date[];
   eventsByDate: Record<string, CalendarEvent[]>;
   selectedDate: string;
+  calendarCategories: CalendarCategoryConfig[];
   onSelectDate: (d: string) => void;
   onOpenEdit: (ev: CalendarEvent) => void;
   onCreateAt: (date: string, time: string) => void;
@@ -671,12 +682,13 @@ function WeekTimelineView({
           return (
             <div key={i} className="border-l border-secondary/20 p-0.5 space-y-0.5">
               {allDay.map(ev => {
-                const c = CATEGORY_COLORS[ev.category];
+                const c = getCategoryColor(ev.category, calendarCategories);
                 return (
                   <button
                     key={ev.id}
                     onClick={() => onOpenEdit(ev)}
-                    className={`block w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${c.bg} ${c.text} ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                    className={`block w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                    style={{ backgroundColor: c.bg, color: c.text }}
                     title={ev.title}
                   >
                     {ev.title}
@@ -762,18 +774,20 @@ function WeekTimelineView({
                   const pos = positions.get(ev.id) ?? { col: 0, colSpan: 1 };
                   const widthPct = 100 / pos.colSpan;
                   const leftPct = widthPct * pos.col;
-                  const c = CATEGORY_COLORS[ev.category];
+                  const c = getCategoryColor(ev.category, calendarCategories);
                   return (
                     <button
                       key={ev.id}
                       onClick={(e) => { e.stopPropagation(); onOpenEdit(ev); }}
-                      className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[10px] shadow-sm ${c.bg} ${c.text} border border-white ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
+                      className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[10px] shadow-sm border border-white ${ev.status === 'cancelled' ? 'line-through opacity-60' : ''}`}
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,
                         left: `calc(${leftPct}% + 2px)`,
                         width: `calc(${widthPct}% - 4px)`,
                         zIndex: 10,
+                        backgroundColor: c.bg,
+                        color: c.text,
                       }}
                       title={`${ev.startTime ?? ''}${ev.endTime ? '-' + ev.endTime : ''} ${ev.title}`}
                     >

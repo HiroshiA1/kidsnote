@@ -3,13 +3,17 @@
 import { useState } from 'react';
 import { useApp } from '@/components/AppLayout';
 import { SchoolSettings, ClassInfo, StaffRoleConfig, LLMProvider, llmProviderOptions, defaultStaffRoleConfigs } from '@/types/settings';
+import { CalendarCategoryConfig, DEFAULT_CALENDAR_CATEGORIES } from '@/types/calendar';
+import { RuleCategoryConfig, DEFAULT_RULE_CATEGORIES } from '@/types/rule';
 import { ShiftPattern } from '@/types/staffAttendance';
 import { topNavItems, navSections } from '@/lib/constants/navigation';
 
-type TabId = 'A' | 'G' | 'H' | 'I' | 'J' | 'K';
+type TabId = 'A' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M';
 
 const tabs: { id: TabId; label: string }[] = [
   { id: 'H', label: 'クラス管理' },
+  { id: 'L', label: 'カレンダーカテゴリ' },
+  { id: 'M', label: 'ルールカテゴリ' },
   { id: 'A', label: '基本情報' },
   { id: 'G', label: 'シフトパターン' },
   { id: 'I', label: 'スタッフ役職' },
@@ -725,6 +729,345 @@ function SectionK({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: 
   );
 }
 
+function SectionL({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
+  const categories = settings.calendarCategories ?? DEFAULT_CALENDAR_CATEGORIES;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<CalendarCategoryConfig | null>(null);
+
+  const addCategory = () => {
+    const newCat: CalendarCategoryConfig = {
+      id: crypto.randomUUID(),
+      name: '',
+      color: classColors[categories.length % classColors.length],
+      displayOrder: categories.length,
+    };
+    onUpdate({ ...settings, calendarCategories: [...categories, newCat] });
+    setEditingId(newCat.id);
+    setEditForm(newCat);
+  };
+
+  const startEdit = (cat: CalendarCategoryConfig) => {
+    setEditingId(cat.id);
+    setEditForm({ ...cat });
+  };
+
+  const saveEdit = () => {
+    if (!editForm) return;
+    onUpdate({ ...settings, calendarCategories: categories.map(c => c.id === editForm.id ? editForm : c) });
+    setEditingId(null);
+    setEditForm(null);
+  };
+
+  const cancelEdit = () => {
+    if (editForm && !editForm.name) {
+      onUpdate({ ...settings, calendarCategories: categories.filter(c => c.id !== editForm.id) });
+    }
+    setEditingId(null);
+    setEditForm(null);
+  };
+
+  const deleteCategory = (id: string) => {
+    const cat = categories.find(c => c.id === id);
+    if (cat?.name === 'その他') return;
+    const updated = categories.filter(c => c.id !== id).map((c, i) => ({ ...c, displayOrder: i }));
+    onUpdate({ ...settings, calendarCategories: updated });
+  };
+
+  const moveCategory = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= categories.length) return;
+    const next = [...categories];
+    [next[index], next[newIndex]] = [next[newIndex], next[index]];
+    const reordered = next.map((c, i) => ({ ...c, displayOrder: i }));
+    onUpdate({ ...settings, calendarCategories: reordered });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-headline">カレンダーカテゴリ</h3>
+        <button onClick={addCategory} className="px-3 py-1.5 bg-button text-white text-xs rounded-lg hover:bg-button/90 transition-colors">
+          + 新規追加
+        </button>
+      </div>
+      <p className="text-sm text-paragraph/60">カレンダーの予定に使うカテゴリを管理します。色を変更するとカレンダー上の表示に反映されます。</p>
+
+      {categories.length === 0 && (
+        <div className="text-center py-12 text-paragraph/50">
+          <p className="text-lg mb-2">カテゴリが未登録です</p>
+          <p className="text-sm">「+ 新規追加」ボタンからカテゴリを作成してください</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {categories.map((cat, index) => (
+          <div key={cat.id} className="bg-surface rounded-lg border border-secondary/20 p-4">
+            {editingId === cat.id && editForm ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-paragraph/70 mb-1">カテゴリ名</label>
+                    <input
+                      type="text"
+                      value={editForm.name}
+                      onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                      placeholder="例: 行事"
+                      className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-button/30"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-paragraph/70 mb-1">表示色</label>
+                    <div className="flex gap-3 items-start">
+                      <input
+                        type="color"
+                        value={editForm.color}
+                        onChange={e => setEditForm({ ...editForm, color: e.target.value })}
+                        className="w-10 h-10 rounded cursor-pointer border border-secondary/30 flex-shrink-0"
+                        title="カスタムカラーを選択"
+                      />
+                      <div className="grid grid-cols-10 gap-1.5">
+                        {classColors.map(c => (
+                          <button
+                            key={c}
+                            onClick={() => setEditForm({ ...editForm, color: c })}
+                            className={`w-6 h-6 rounded-full border-2 transition-all ${editForm.color === c ? 'border-headline scale-110 ring-2 ring-button/30' : 'border-transparent hover:scale-110'}`}
+                            style={{ backgroundColor: c }}
+                            title={c}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={cancelEdit} className="px-3 py-1.5 text-sm text-paragraph/70 hover:text-paragraph transition-colors">
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    disabled={!editForm.name.trim()}
+                    className="px-4 py-1.5 bg-button text-white text-sm rounded-lg hover:bg-button/90 disabled:opacity-40 transition-colors"
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => moveCategory(index, -1)}
+                      disabled={index === 0}
+                      className="text-paragraph/40 hover:text-paragraph disabled:opacity-20 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => moveCategory(index, 1)}
+                      disabled={index === categories.length - 1}
+                      className="text-paragraph/40 hover:text-paragraph disabled:opacity-20 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: cat.color }} />
+                  <span className="font-medium text-headline">{cat.name}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => startEdit(cat)} className="text-xs px-2 py-1 text-button hover:bg-button/10 rounded transition-colors">
+                    編集
+                  </button>
+                  {cat.name !== 'その他' ? (
+                    <button onClick={() => deleteCategory(cat.id)} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded transition-colors">
+                      削除
+                    </button>
+                  ) : (
+                    <span className="text-xs px-2 py-1 text-paragraph/30">削除不可</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionM({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: (s: SchoolSettings) => void }) {
+  const categories = settings.ruleCategories ?? DEFAULT_RULE_CATEGORIES;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<RuleCategoryConfig | null>(null);
+
+  const addCategory = () => {
+    const newCat: RuleCategoryConfig = {
+      id: crypto.randomUUID(),
+      name: '',
+      icon: '📌',
+      displayOrder: categories.length,
+      isBuiltIn: false,
+    };
+    onUpdate({ ...settings, ruleCategories: [...categories, newCat] });
+    setEditingId(newCat.id);
+    setEditForm(newCat);
+  };
+
+  const startEdit = (cat: RuleCategoryConfig) => {
+    setEditingId(cat.id);
+    setEditForm({ ...cat });
+  };
+
+  const saveEdit = () => {
+    if (!editForm) return;
+    onUpdate({ ...settings, ruleCategories: categories.map(c => c.id === editForm.id ? editForm : c) });
+    setEditingId(null);
+    setEditForm(null);
+  };
+
+  const cancelEdit = () => {
+    if (editForm && !editForm.name) {
+      onUpdate({ ...settings, ruleCategories: categories.filter(c => c.id !== editForm.id) });
+    }
+    setEditingId(null);
+    setEditForm(null);
+  };
+
+  const deleteCategory = (id: string) => {
+    const cat = categories.find(c => c.id === id);
+    if (cat?.isBuiltIn) return;
+    const updated = categories.filter(c => c.id !== id).map((c, i) => ({ ...c, displayOrder: i }));
+    onUpdate({ ...settings, ruleCategories: updated });
+  };
+
+  const moveCategory = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= categories.length) return;
+    const next = [...categories];
+    [next[index], next[newIndex]] = [next[newIndex], next[index]];
+    const reordered = next.map((c, i) => ({ ...c, displayOrder: i }));
+    onUpdate({ ...settings, ruleCategories: reordered });
+  };
+
+  const emojiPresets = ['📌', '📚', '🎨', '🌱', '🏃', '🍽️', '🎵', '🔬', '🤝', '💪', '🌍', '✨', '📖', '🎯', '💬', '🛡️', '🏥', '⚠️', '🚨', '📋'];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-headline">ルールカテゴリ</h3>
+        <button onClick={addCategory} className="px-3 py-1.5 bg-button text-white text-xs rounded-lg hover:bg-button/90 transition-colors">
+          + 新規追加
+        </button>
+      </div>
+      <p className="text-sm text-paragraph/60">園のルールに使うカテゴリを管理します。教育理念・方針・目標はAIが計画作成時に参照します。</p>
+
+      <div className="space-y-3">
+        {categories.map((cat, index) => (
+          <div key={cat.id} className="bg-surface rounded-lg border border-secondary/20 p-4">
+            {editingId === cat.id && editForm ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-paragraph/70 mb-1">カテゴリ名</label>
+                    <input
+                      type="text"
+                      value={editForm.name}
+                      onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                      placeholder="例: 食育"
+                      className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-button/30"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-paragraph/70 mb-1">アイコン</label>
+                    <div className="flex gap-3 items-start">
+                      <input
+                        type="text"
+                        value={editForm.icon}
+                        onChange={e => setEditForm({ ...editForm, icon: e.target.value })}
+                        className="w-16 px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-button/30"
+                        maxLength={2}
+                      />
+                      <div className="grid grid-cols-10 gap-1.5">
+                        {emojiPresets.map(em => (
+                          <button
+                            key={em}
+                            onClick={() => setEditForm({ ...editForm, icon: em })}
+                            className={`w-7 h-7 rounded text-sm flex items-center justify-center border transition-all ${editForm.icon === em ? 'border-button bg-button/10 scale-110' : 'border-secondary/20 hover:bg-secondary/10'}`}
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={cancelEdit} className="px-3 py-1.5 text-sm text-paragraph/70 hover:text-paragraph transition-colors">
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    disabled={!editForm.name.trim()}
+                    className="px-4 py-1.5 bg-button text-white text-sm rounded-lg hover:bg-button/90 disabled:opacity-40 transition-colors"
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => moveCategory(index, -1)}
+                      disabled={index === 0}
+                      className="text-paragraph/40 hover:text-paragraph disabled:opacity-20 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => moveCategory(index, 1)}
+                      disabled={index === categories.length - 1}
+                      className="text-paragraph/40 hover:text-paragraph disabled:opacity-20 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </div>
+                  <span className="text-lg">{cat.icon}</span>
+                  <span className="font-medium text-headline">{cat.name}</span>
+                  {cat.isBuiltIn && <span className="text-[10px] px-1.5 py-0.5 bg-secondary/15 text-paragraph/50 rounded">組込</span>}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => startEdit(cat)} className="text-xs px-2 py-1 text-button hover:bg-button/10 rounded transition-colors">
+                    編集
+                  </button>
+                  {!cat.isBuiltIn ? (
+                    <button onClick={() => deleteCategory(cat.id)} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded transition-colors">
+                      削除
+                    </button>
+                  ) : (
+                    <span className="text-xs px-2 py-1 text-paragraph/30">削除不可</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { settings, updateSettings, shiftPatterns, setShiftPatterns } = useApp();
   const [activeTab, setActiveTab] = useState<TabId>('H');
@@ -737,6 +1080,7 @@ export default function SettingsPage() {
       case 'I': return <SectionI settings={settings} onUpdate={updateSettings} />;
       case 'J': return <SectionJ settings={settings} onUpdate={updateSettings} />;
       case 'K': return <SectionK settings={settings} onUpdate={updateSettings} />;
+      case 'L': return <SectionL settings={settings} onUpdate={updateSettings} />;
     }
   };
 

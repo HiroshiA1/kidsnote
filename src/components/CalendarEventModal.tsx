@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useApp } from './AppLayout';
 import {
   CalendarEvent,
-  CalendarCategory,
-  CALENDAR_CATEGORIES,
+  CalendarCategoryConfig,
+  DEFAULT_CALENDAR_CATEGORIES,
+  getCategoryColor,
   EventStatus,
   VisibilityScope,
 } from '@/types/calendar';
@@ -27,15 +28,27 @@ function addMinutes(hm: string, delta: number): string {
   return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
 }
 
+function roundToNext30(d: Date): string {
+  const m = d.getMinutes();
+  const rounded = m < 30 ? 30 : 60;
+  const t = new Date(d);
+  t.setMinutes(rounded, 0, 0);
+  if (rounded === 60) t.setHours(t.getHours());
+  const h = String(t.getHours()).padStart(2, '0');
+  const min = String(t.getMinutes()).padStart(2, '0');
+  return `${h}:${min}`;
+}
+
 function emptyEvent(date: string, fiscalYear: number, startTime?: string): CalendarEvent {
   const now = new Date().toISOString();
+  const defaultStart = startTime ?? roundToNext30(new Date());
   return {
     id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     title: '',
     date,
-    allDay: !startTime,
-    startTime: startTime,
-    endTime: startTime ? addMinutes(startTime, 60) : undefined,
+    allDay: false,
+    startTime: defaultStart,
+    endTime: addMinutes(defaultStart, 60),
     category: '行事',
     status: 'scheduled',
     visibilityScope: 'all_staff',
@@ -47,9 +60,11 @@ function emptyEvent(date: string, fiscalYear: number, startTime?: string): Calen
 
 export function CalendarEventModal({ open, onClose, initialDate, initialStartTime, event }: Props) {
   const { addCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fiscalYear, staff, settings, children: childrenData, currentStaffId, addToast } = useApp();
+  const calendarCategories = settings.calendarCategories ?? DEFAULT_CALENDAR_CATEGORIES;
   const [form, setForm] = useState<CalendarEvent>(() =>
     event ?? emptyEvent(initialDate ?? new Date().toISOString().slice(0, 10), fiscalYear, initialStartTime)
   );
+  const [childClassFilter, setChildClassFilter] = useState<string>('all');
 
   useEffect(() => {
     if (open) {
@@ -175,13 +190,19 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-paragraph/70 mb-1">カテゴリ</label>
-              <select
-                value={form.category}
-                onChange={e => set('category', e.target.value as CalendarCategory)}
-                className="w-full px-3 py-2 border border-secondary/30 rounded-md text-sm"
-              >
-                {CALENDAR_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: getCategoryColor(form.category, calendarCategories).dot }}
+                />
+                <select
+                  value={form.category}
+                  onChange={e => set('category', e.target.value)}
+                  className="w-full px-3 py-2 border border-secondary/30 rounded-md text-sm"
+                >
+                  {calendarCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-paragraph/70 mb-1">ステータス</label>
@@ -279,23 +300,52 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
           {form.visibilityScope === 'children_related' && (
             <div>
               <label className="block text-xs font-medium text-paragraph/70 mb-1">園児選択</label>
+              <div className="flex items-center gap-2 mb-2">
+                <select
+                  value={childClassFilter}
+                  onChange={e => setChildClassFilter(e.target.value)}
+                  className="px-3 py-1.5 border border-secondary/30 rounded-md text-sm flex-1"
+                >
+                  <option value="all">全クラス</option>
+                  {classes.map(cls => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
+                </select>
+                {childClassFilter !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const classKids = childrenData.filter(c => c.classId === childClassFilter).map(c => c.id);
+                      const cur = new Set(form.targetChildIds ?? []);
+                      classKids.forEach(id => cur.add(id));
+                      set('targetChildIds', Array.from(cur));
+                    }}
+                    className="px-2 py-1.5 text-xs bg-button/10 text-button rounded-md hover:bg-button/20 whitespace-nowrap"
+                  >
+                    このクラス全員を選択
+                  </button>
+                )}
+              </div>
               <div className="max-h-32 overflow-y-auto border border-secondary/30 rounded-md p-2 space-y-1">
-                {childrenData.map(c => {
-                  const checked = form.targetChildIds?.includes(c.id) ?? false;
-                  return (
-                    <label key={c.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          const cur = form.targetChildIds ?? [];
-                          set('targetChildIds', checked ? cur.filter(id => id !== c.id) : [...cur, c.id]);
-                        }}
-                      />
-                      {c.lastNameKanji || c.lastName} {c.firstNameKanji || c.firstName}
-                    </label>
-                  );
-                })}
+                {childrenData
+                  .filter(c => childClassFilter === 'all' || c.classId === childClassFilter)
+                  .map(c => {
+                    const checked = form.targetChildIds?.includes(c.id) ?? false;
+                    return (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const cur = form.targetChildIds ?? [];
+                            set('targetChildIds', checked ? cur.filter(id => id !== c.id) : [...cur, c.id]);
+                          }}
+                        />
+                        {c.lastNameKanji || c.lastName} {c.firstNameKanji || c.firstName}
+                        <span className="text-xs text-paragraph/50">({c.className})</span>
+                      </label>
+                    );
+                  })}
               </div>
             </div>
           )}

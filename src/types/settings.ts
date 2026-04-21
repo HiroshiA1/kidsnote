@@ -1,4 +1,6 @@
 // 学校基本調査ベースの園設定型定義
+import { CalendarCategoryConfig, DEFAULT_CALENDAR_CATEGORIES } from '@/types/calendar';
+import { RuleCategoryConfig, DEFAULT_RULE_CATEGORIES } from '@/types/rule';
 
 export interface BasicInfo {
   prefectureCode: string;
@@ -137,6 +139,8 @@ export interface SchoolSettings {
   staffRoleConfigs?: StaffRoleConfig[];
   menuVisibility?: MenuVisibilityConfig;
   llmConfig?: LLMConfig;
+  calendarCategories?: CalendarCategoryConfig[];
+  ruleCategories?: RuleCategoryConfig[];
 }
 
 export const defaultBasicInfo: BasicInfo = {
@@ -196,6 +200,8 @@ export const defaultSchoolSettings: SchoolSettings = {
   classEnrollments: [],
   graduateCount: { male: 0, female: 0 },
   classes: defaultClasses,
+  calendarCategories: DEFAULT_CALENDAR_CATEGORIES,
+  ruleCategories: DEFAULT_RULE_CATEGORIES,
 };
 
 // Staffのroleから教員職階へのマッピング
