@@ -11,6 +11,8 @@ import { AttendanceRecord } from '@/types/document';
 import { SchoolSettings } from '@/types/settings';
 import { ShiftPattern, ShiftAssignment, StaffAttendanceRecord } from '@/types/staffAttendance';
 import { CalendarEvent, SupportAssignment } from '@/types/calendar';
+import { CurriculumPlan, DailyReflection, ChildDailyReflection } from '@/types/carePlan';
+import { NewYearSetup } from '@/types/newYearSetup';
 import { FloatingPopup } from './FloatingPopup';
 import { AppRole } from '@/lib/supabase/auth';
 import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit';
@@ -87,6 +89,18 @@ interface AppContextType {
   addSupportAssignment: (assignment: SupportAssignment) => void;
   updateSupportAssignment: (assignment: SupportAssignment) => void;
   deleteSupportAssignment: (id: string) => void;
+  curriculumPlans: CurriculumPlan[];
+  addCurriculumPlan: (plan: CurriculumPlan) => void;
+  updateCurriculumPlan: (plan: CurriculumPlan) => void;
+  deleteCurriculumPlan: (id: string) => void;
+  dailyReflections: DailyReflection[];
+  addDailyReflection: (r: DailyReflection) => void;
+  updateDailyReflection: (r: DailyReflection) => void;
+  childDailyReflections: ChildDailyReflection[];
+  addChildDailyReflection: (r: ChildDailyReflection) => void;
+  updateChildDailyReflection: (r: ChildDailyReflection) => void;
+  newYearSetup: NewYearSetup | null;
+  setNewYearSetup: (setup: NewYearSetup | null) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -119,6 +133,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
     fiscalYear, setFiscalYear,
     calendarEvents, setCalendarEvents,
     supportAssignments, setSupportAssignments,
+    curriculumPlans, setCurriculumPlans,
+    dailyReflections, setDailyReflections,
+    childDailyReflections, setChildDailyReflections,
+    newYearSetup, setNewYearSetup,
   } = useHydration();
 
   const addCalendarEvent = (event: CalendarEvent) => {
@@ -145,6 +163,33 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const deleteSupportAssignment = (id: string) => {
     setSupportAssignments(prev => prev.filter(a => a.id !== id));
     auditDelete('support_assignment', id);
+  };
+
+  const addCurriculumPlan = (plan: CurriculumPlan) => {
+    setCurriculumPlans(prev => [...prev, plan]);
+    auditCreate('curriculum_plan', plan.id, { title: plan.title });
+  };
+  const updateCurriculumPlan = (plan: CurriculumPlan) => {
+    setCurriculumPlans(prev => prev.map(p => p.id === plan.id ? plan : p));
+    auditUpdate('curriculum_plan', plan.id, { title: plan.title });
+  };
+  const deleteCurriculumPlan = (id: string) => {
+    setCurriculumPlans(prev => prev.filter(p => p.id !== id));
+    auditDelete('curriculum_plan', id);
+  };
+
+  const addDailyReflection = (r: DailyReflection) => {
+    setDailyReflections(prev => [...prev, r]);
+  };
+  const updateDailyReflection = (r: DailyReflection) => {
+    setDailyReflections(prev => prev.map(x => x.id === r.id ? r : x));
+  };
+
+  const addChildDailyReflection = (r: ChildDailyReflection) => {
+    setChildDailyReflections(prev => [...prev, r]);
+  };
+  const updateChildDailyReflection = (r: ChildDailyReflection) => {
+    setChildDailyReflections(prev => prev.map(x => x.id === r.id ? r : x));
   };
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -300,6 +345,18 @@ export function AppLayout({ children }: { children: ReactNode }) {
         addSupportAssignment,
         updateSupportAssignment,
         deleteSupportAssignment,
+        curriculumPlans,
+        addCurriculumPlan,
+        updateCurriculumPlan,
+        deleteCurriculumPlan,
+        dailyReflections,
+        addDailyReflection,
+        updateDailyReflection,
+        childDailyReflections,
+        addChildDailyReflection,
+        updateChildDailyReflection,
+        newYearSetup,
+        setNewYearSetup,
       }}
     >
       <div className="flex min-h-screen bg-background">

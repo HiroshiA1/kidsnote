@@ -13,6 +13,8 @@ import type { Staff } from '@/components/AppLayout';
 import { initialStaff } from '@/lib/data/initialStaff';
 import { CalendarEvent, SupportAssignment, DEFAULT_CALENDAR_CATEGORIES } from '@/types/calendar';
 import { DEFAULT_RULE_CATEGORIES } from '@/types/rule';
+import { CurriculumPlan, DailyReflection, ChildDailyReflection } from '@/types/carePlan';
+import { NewYearSetup } from '@/types/newYearSetup';
 
 const staffRoleMap: Record<string, AppRole> = {
   '園長': 'admin',
@@ -37,6 +39,10 @@ export function useHydration() {
   const [fiscalYear, setFiscalYear] = useState<number>(getCurrentFiscalYear());
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [supportAssignments, setSupportAssignments] = useState<SupportAssignment[]>([]);
+  const [curriculumPlans, setCurriculumPlans] = useState<CurriculumPlan[]>([]);
+  const [dailyReflections, setDailyReflections] = useState<DailyReflection[]>([]);
+  const [childDailyReflections, setChildDailyReflections] = useState<ChildDailyReflection[]>([]);
+  const [newYearSetup, setNewYearSetup] = useState<NewYearSetup | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate from localStorage after mount
@@ -63,6 +69,10 @@ export function useHydration() {
       setShiftAssignments(loadFromStorage<ShiftAssignment[]>(STORAGE_KEYS.shiftAssignments) ?? []);
       setCalendarEvents(loadFromStorage<CalendarEvent[]>(STORAGE_KEYS.calendarEvents) ?? []);
       setSupportAssignments(loadFromStorage<SupportAssignment[]>(STORAGE_KEYS.supportAssignments) ?? []);
+      setCurriculumPlans(loadFromStorage<CurriculumPlan[]>(STORAGE_KEYS.curriculumPlans) ?? []);
+      setDailyReflections(loadFromStorage<DailyReflection[]>(STORAGE_KEYS.dailyReflections) ?? []);
+      setChildDailyReflections(loadFromStorage<ChildDailyReflection[]>(STORAGE_KEYS.childDailyReflections) ?? []);
+      setNewYearSetup(loadFromStorage<NewYearSetup>(STORAGE_KEYS.newYearSetup) ?? null);
 
       const savedStaffId = loadFromStorage<string>(STORAGE_KEYS.currentStaffId) ?? null;
       setCurrentStaffId(savedStaffId);
@@ -94,6 +104,10 @@ export function useHydration() {
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.fiscalYear, fiscalYear); }, [fiscalYear, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.calendarEvents, calendarEvents); }, [calendarEvents, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.supportAssignments, supportAssignments); }, [supportAssignments, hydrated]);
+  useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.curriculumPlans, curriculumPlans); }, [curriculumPlans, hydrated]);
+  useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.dailyReflections, dailyReflections); }, [dailyReflections, hydrated]);
+  useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.childDailyReflections, childDailyReflections); }, [childDailyReflections, hydrated]);
+  useEffect(() => { if (hydrated && newYearSetup) saveToStorage(STORAGE_KEYS.newYearSetup, newYearSetup); }, [newYearSetup, hydrated]);
   useEffect(() => {
     if (hydrated) {
       saveToStorage(STORAGE_KEYS.currentStaffId, currentStaffId);
@@ -123,6 +137,10 @@ export function useHydration() {
     fiscalYear, setFiscalYear,
     calendarEvents, setCalendarEvents,
     supportAssignments, setSupportAssignments,
+    curriculumPlans, setCurriculumPlans,
+    dailyReflections, setDailyReflections,
+    childDailyReflections, setChildDailyReflections,
+    newYearSetup, setNewYearSetup,
     hydrated,
   };
 }

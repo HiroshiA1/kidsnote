@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/components/AppLayout';
-import { IntentType, InputMessage, GrowthData, IncidentData, HandoverData, ChildUpdateData } from '@/types/intent';
+import { InputMessage } from '@/types/intent';
 import { sampleRecords } from '@/lib/sampleData';
-import { ChildLinks } from '@/components/ChildLink';
 import { getChildDisplayName } from '@/lib/childrenStore';
-import { intentConfig, recordIntentTypes } from '@/lib/constants/intentConfig';
 import { ChildSearchWidget } from '@/components/ChildSearchWidget';
+import { HandoverWidget } from '@/components/dashboard/HandoverWidget';
+import { IncidentWidget } from '@/components/dashboard/IncidentWidget';
+import { ClassGrowthWidget } from '@/components/dashboard/ClassGrowthWidget';
+import { defaultClasses } from '@/types/settings';
 
 function isToday(date: Date): boolean {
   const now = new Date();
@@ -16,128 +18,6 @@ function isToday(date: Date): boolean {
     date.getFullYear() === now.getFullYear() &&
     date.getMonth() === now.getMonth() &&
     date.getDate() === now.getDate()
-  );
-}
-
-function getRecordSummaryText(message: InputMessage): string {
-  if (!message.result) return message.content;
-  const { intent, data } = message.result;
-  switch (intent) {
-    case 'growth':
-      return (data as GrowthData).summary;
-    case 'incident':
-      return (data as IncidentData).description;
-    case 'handover':
-      return (data as HandoverData).message;
-    case 'child_update':
-      return (data as ChildUpdateData).new_value;
-    default:
-      return message.content;
-  }
-}
-
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-}
-
-function TodayRecordSection({
-  intentType,
-  records,
-}: {
-  intentType: IntentType;
-  records: InputMessage[];
-}) {
-  const [expanded, setExpanded] = useState(records.length > 0);
-  const config = intentConfig[intentType];
-  const isEmpty = records.length === 0;
-
-  return (
-    <div className={`rounded-xl border ${isEmpty ? 'border-paragraph/10 opacity-50' : 'border-secondary/20'} overflow-hidden`}>
-      <button
-        onClick={() => !isEmpty && setExpanded(!expanded)}
-        className={`w-full flex items-center gap-3 px-4 py-3 ${isEmpty ? 'bg-paragraph/5 cursor-default' : `${config.bgColor} cursor-pointer hover:opacity-90`} transition-opacity`}
-      >
-        <span className="text-xl">{config.icon}</span>
-        <span className={`font-medium ${isEmpty ? 'text-paragraph/40' : 'text-headline'}`}>
-          {config.label}
-        </span>
-        <span className={`ml-auto text-sm px-2 py-0.5 rounded-full ${
-          isEmpty
-            ? 'bg-paragraph/10 text-paragraph/40'
-            : `${config.cardBg} text-headline`
-        }`}>
-          {records.length}件
-        </span>
-        {!isEmpty && (
-          <svg
-            className={`w-4 h-4 text-paragraph/60 transition-transform ${expanded ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        )}
-      </button>
-
-      {expanded && !isEmpty && (
-        <div className="bg-surface divide-y divide-secondary/10">
-          {records
-            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-            .map(record => (
-              <div key={record.id} className="px-4 py-3 hover:bg-secondary/5 transition-colors">
-                <div className="flex items-start gap-3">
-                  <span className="text-xs text-paragraph/50 whitespace-nowrap mt-0.5">
-                    {formatTime(record.timestamp)}
-                  </span>
-                  <div className="text-sm text-headline flex-1">
-                    {record.linkedChildIds && record.linkedChildIds.length > 0 && (
-                      <span className="font-medium mr-1">
-                        <ChildLinks childIds={record.linkedChildIds} />:
-                      </span>
-                    )}
-                    <span>{getRecordSummaryText(record)}</span>
-                  </div>
-                  {record.result?.intent === 'incident' && (
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      (record.result.data as IncidentData).severity === 'high'
-                        ? 'bg-alert/20 text-alert'
-                        : (record.result.data as IncidentData).severity === 'medium'
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-paragraph/10 text-paragraph/60'
-                    }`}>
-                      {(record.result.data as IncidentData).severity === 'high' ? '重大' :
-                       (record.result.data as IncidentData).severity === 'medium' ? '中度' : '軽微'}
-                    </span>
-                  )}
-                  {record.result?.intent === 'handover' && (record.result.data as HandoverData).urgent && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-alert/20 text-alert">
-                      至急
-                    </span>
-                  )}
-                </div>
-                {record.result?.intent === 'growth' && (data => (
-                  data.tags.length > 0 && (
-                    <div className="flex gap-1 mt-1.5 ml-12">
-                      {data.tags.map(tag => (
-                        <span key={tag} className="text-xs px-1.5 py-0.5 rounded-full bg-tertiary/20 text-paragraph/60">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )
-                ))(record.result.data as GrowthData)}
-              </div>
-            ))}
-          <Link href={config.href}>
-            <div className="px-4 py-2 text-center text-xs text-button hover:bg-button/5 transition-colors">
-              すべての{config.label}を見る →
-            </div>
-          </Link>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -192,9 +72,15 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function Dashboard() {
-  const { messages, children: childrenData, selectedChildId, setSelectedChildId } = useApp();
+  const {
+    messages, children: childrenData, staff, settings,
+    selectedChildId, setSelectedChildId, currentStaffId,
+  } = useApp();
+
   const [today, setToday] = useState('');
   const [showWelcome, setShowWelcome] = useState(false);
+  const classes = settings.classes ?? defaultClasses;
+  const currentStaff = staff.find(s => s.id === currentStaffId);
 
   const selectedChild = selectedChildId ? childrenData.find(c => c.id === selectedChildId) : null;
 
@@ -205,7 +91,6 @@ export default function Dashboard() {
       day: 'numeric',
       weekday: 'long'
     }));
-    // 初回アクセス判定
     if (!localStorage.getItem('kidsnote_welcomed')) {
       setShowWelcome(true);
     }
@@ -213,21 +98,14 @@ export default function Dashboard() {
 
   // 保存済みデータ（新しい入力 + サンプル）
   const savedMessages = [...messages.filter(m => m.status === 'saved'), ...sampleRecords];
-
-  // 今日の記録のみ
   const todayRecords = savedMessages.filter(m => isToday(m.timestamp));
 
-  // タイプ別に分類
-  const recordsByType = (intentType: string) =>
-    todayRecords.filter(m => m.result?.intent === intentType);
-
-  const todayTotal = todayRecords.length;
-
-  const incidentCount = recordsByType('incident').length;
+  const handoverRecords = todayRecords.filter(m => m.result?.intent === 'handover');
+  const incidentRecords = todayRecords.filter(m => m.result?.intent === 'incident');
+  const growthRecords = todayRecords.filter(m => m.result?.intent === 'growth');
 
   return (
     <div className="min-h-screen">
-      {/* ウェルカムモーダル */}
       {showWelcome && (
         <WelcomeModal onClose={() => {
           setShowWelcome(false);
@@ -235,15 +113,14 @@ export default function Dashboard() {
         }} />
       )}
 
-      {/* ページヘッダー */}
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <h1 className="text-xl font-bold text-headline">ダッシュボード</h1>
           <span className="text-sm text-paragraph/60">{today}</span>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-8">
+      <main className="max-w-5xl mx-auto px-3 sm:px-6 py-6 space-y-6">
         {/* 園児検索 */}
         <section>
           <ChildSearchWidget
@@ -274,92 +151,41 @@ export default function Dashboard() {
           )}
         </section>
 
-        {/* 日次安全確認 */}
-        <section>
-          <div className={`rounded-xl border p-4 flex items-center gap-4 ${
-            incidentCount > 0
-              ? 'border-alert/30 bg-alert/5'
-              : 'border-tertiary/30 bg-tertiary/5'
-          }`}>
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-              incidentCount > 0 ? 'bg-alert/20' : 'bg-tertiary/20'
-            }`}>
-              <span className="text-xl">{incidentCount > 0 ? '\u26A0\uFE0F' : '\u2705'}</span>
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-headline text-sm">
-                {incidentCount > 0
-                  ? `本日のヒヤリハット: ${incidentCount}件`
-                  : '本日のヒヤリハット: 0件'}
-              </p>
-              <p className="text-xs text-paragraph/60">
-                {incidentCount > 0
-                  ? '内容を確認し、必要な対策を検討してください'
-                  : '本日は安全に関する報告はありません'}
-              </p>
-            </div>
-            {incidentCount > 0 && (
-              <Link
-                href="/records/incident"
-                className="text-sm text-alert hover:underline whitespace-nowrap"
-              >
-                詳細を確認
-              </Link>
-            )}
-          </div>
+        {/* 上部: 申し送り + ヒヤリハット 2カラム */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <HandoverWidget records={handoverRecords} />
+          <IncidentWidget records={incidentRecords} />
         </section>
 
-        {/* 本日の記録（タイプ別セクション） */}
+        {/* 下部: 成長記録 */}
         <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-headline">本日の記録</h2>
-            <span className="text-sm text-paragraph/50">合計 {todayTotal}件</span>
-          </div>
-          <div className="space-y-3">
-            {recordIntentTypes.map(intentType => (
-              <TodayRecordSection
-                key={intentType}
-                intentType={intentType}
-                records={recordsByType(intentType)}
-              />
-            ))}
-          </div>
+          <ClassGrowthWidget
+            records={growthRecords}
+            children={childrenData}
+            classes={classes}
+            currentStaff={currentStaff}
+          />
         </section>
 
         {/* クイックリンク */}
         <section>
           <h2 className="text-lg font-bold text-headline mb-4">クイックアクセス</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Link href="/children">
-              <div className="bg-surface rounded-xl p-4 border border-secondary/20 hover:shadow-md transition-shadow">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-button/10 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-button" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { href: '/children', icon: '&#128101;', label: '園児一覧', color: 'bg-button/10 text-button' },
+              { href: '/staff', icon: '&#128100;', label: '職員一覧', color: 'bg-tertiary/20 text-tertiary' },
+              { href: '/plans/curriculum', icon: '&#128221;', label: '保育計画', color: 'bg-amber-100 text-amber-700' },
+              { href: '/calendar', icon: '&#128197;', label: 'カレンダー', color: 'bg-purple-100 text-purple-700' },
+            ].map(item => (
+              <Link key={item.href} href={item.href}>
+                <div className="bg-surface rounded-xl p-4 border border-secondary/20 hover:shadow-md transition-shadow text-center">
+                  <div className={`w-10 h-10 mx-auto rounded-lg ${item.color} flex items-center justify-center mb-2`}>
+                    <span className="text-lg" dangerouslySetInnerHTML={{ __html: item.icon }} />
                   </div>
-                  <div>
-                    <p className="font-medium text-headline">園児一覧</p>
-                    <p className="text-xs text-paragraph/60">園児情報を管理</p>
-                  </div>
+                  <p className="text-sm font-medium text-headline">{item.label}</p>
                 </div>
-              </div>
-            </Link>
-            <Link href="/staff">
-              <div className="bg-surface rounded-xl p-4 border border-secondary/20 hover:shadow-md transition-shadow">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-tertiary/20 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="font-medium text-headline">職員一覧</p>
-                    <p className="text-xs text-paragraph/60">職員情報を管理</p>
-                  </div>
-                </div>
-              </div>
-            </Link>
+              </Link>
+            ))}
           </div>
         </section>
       </main>

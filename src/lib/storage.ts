@@ -104,4 +104,8 @@ export const STORAGE_KEYS = {
   fiscalYear: 'kidsnote_fiscal_year',
   calendarEvents: 'kidsnote_calendar_events',
   supportAssignments: 'kidsnote_support_assignments',
+  curriculumPlans: 'kidsnote_curriculum_plans',
+  dailyReflections: 'kidsnote_daily_reflections',
+  childDailyReflections: 'kidsnote_child_daily_reflections',
+  newYearSetup: 'kidsnote_new_year_setup',
 } as const;

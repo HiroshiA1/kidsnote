@@ -7,11 +7,13 @@ import { CalendarCategoryConfig, DEFAULT_CALENDAR_CATEGORIES } from '@/types/cal
 import { RuleCategoryConfig, DEFAULT_RULE_CATEGORIES } from '@/types/rule';
 import { ShiftPattern } from '@/types/staffAttendance';
 import { topNavItems, navSections } from '@/lib/constants/navigation';
+import { NewYearSetupWizard } from '@/components/settings/NewYearSetupWizard';
 
-type TabId = 'A' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M';
+type TabId = 'A' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N';
 
 const tabs: { id: TabId; label: string }[] = [
   { id: 'H', label: 'クラス管理' },
+  { id: 'N', label: '新年度設定' },
   { id: 'L', label: 'カレンダーカテゴリ' },
   { id: 'M', label: 'ルールカテゴリ' },
   { id: 'A', label: '基本情報' },
@@ -1069,8 +1071,13 @@ function SectionM({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: 
 }
 
 export default function SettingsPage() {
-  const { settings, updateSettings, shiftPatterns, setShiftPatterns } = useApp();
+  const {
+    settings, updateSettings, shiftPatterns, setShiftPatterns,
+    children, staff, rules, fiscalYear,
+    newYearSetup, setNewYearSetup, addCurriculumPlan,
+  } = useApp();
   const [activeTab, setActiveTab] = useState<TabId>('H');
+  const classes = settings.classes ?? [];
 
   const renderSection = () => {
     switch (activeTab) {
@@ -1081,6 +1088,20 @@ export default function SettingsPage() {
       case 'J': return <SectionJ settings={settings} onUpdate={updateSettings} />;
       case 'K': return <SectionK settings={settings} onUpdate={updateSettings} />;
       case 'L': return <SectionL settings={settings} onUpdate={updateSettings} />;
+      case 'M': return <SectionM settings={settings} onUpdate={updateSettings} />;
+      case 'N': return (
+        <NewYearSetupWizard
+          currentClasses={classes}
+          children={children}
+          staff={staff}
+          settings={settings}
+          rules={rules}
+          fiscalYear={fiscalYear}
+          setup={newYearSetup}
+          onSave={setNewYearSetup}
+          onAddPlan={addCurriculumPlan}
+        />
+      );
     }
   };
 
