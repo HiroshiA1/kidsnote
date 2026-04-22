@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  /* KidsNote Design System */
+  /* KidsNote Design System (Light) */
   --background: #faeee7;
   --headline: #33272a;
   --paragraph: #594a4e;
@@ -10,6 +10,32 @@
   --secondary: #ffc6c7;
   --tertiary: #c3f0ca;
   --alert: #ff8b8b;
+}
+
+/* OS設定に従う(ユーザーが手動で light に固定していない場合) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #1c1a1b;
+    --headline: #f5efe9;
+    --paragraph: #c8bebd;
+    --button: #ff8ba7;
+    --surface: #2a2527;
+    --secondary: #4a383b;
+    --tertiary: #2f4a35;
+    --alert: #ff9b9b;
+  }
+}
+
+/* 手動で dark を固定 */
+:root[data-theme="dark"] {
+  --background: #1c1a1b;
+  --headline: #f5efe9;
+  --paragraph: #c8bebd;
+  --button: #ff8ba7;
+  --surface: #2a2527;
+  --secondary: #4a383b;
+  --tertiary: #2f4a35;
+  --alert: #ff9b9b;
 }
 
 @theme inline {

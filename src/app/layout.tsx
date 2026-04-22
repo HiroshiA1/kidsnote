@@ -30,6 +30,22 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * ハイドレート前に localStorage からテーマ設定を読み取り、
+ * <html> の data-theme 属性を設定することで初期描画の "flash" を回避する。
+ * 値は 'light' | 'dark' | 'auto'(未設定扱い)
+ */
+const themeInitScript = `
+(function() {
+  try {
+    var t = localStorage.getItem('kidsnote:theme');
+    if (t === 'light' || t === 'dark') {
+      document.documentElement.setAttribute('data-theme', t);
+    }
+  } catch (_) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -37,6 +53,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
       >

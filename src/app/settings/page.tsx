@@ -8,6 +8,7 @@ import { RuleCategoryConfig, DEFAULT_RULE_CATEGORIES } from '@/types/rule';
 import { ShiftPattern } from '@/types/staffAttendance';
 import { topNavItems, navSections } from '@/lib/constants/navigation';
 import { NewYearSetupWizard } from '@/components/settings/NewYearSetupWizard';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 type TabId = 'A' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N';
 
@@ -92,6 +93,9 @@ function SectionA({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: 
         <InputField label="FAX" value={info.fax} onChange={v => update('fax', v)} />
         <InputField label="園長名" value={info.principalName} onChange={v => update('principalName', v)} />
         <InputField label="設立年月日" value={info.establishedDate} onChange={v => update('establishedDate', v)} placeholder="例: 1990-04-01" />
+      </div>
+      <div className="pt-4 border-t border-secondary/30">
+        <ThemeToggle />
       </div>
     </div>
   );
