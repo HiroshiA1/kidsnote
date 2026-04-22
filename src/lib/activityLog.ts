@@ -9,7 +9,12 @@ export type ActivityType =
   | 'ai_delete_child_blocked'
   | 'ai_delete_child_confirmed'
   | 'ai_delete_child_cancelled'
-  | 'ai_add_rule_saved';
+  | 'ai_add_rule_saved'
+  | 'ai_update_rule_saved'
+  | 'ai_delete_rule_blocked'
+  | 'ai_delete_rule_confirmed'
+  | 'ai_delete_rule_cancelled'
+  | 'ai_add_calendar_event_saved';
 
 export interface ClassifyPayload {
   inputText: string;
@@ -60,6 +65,26 @@ export interface AiAddRuleSavedPayload {
   category: string;
 }
 
+/** AI起動のルール削除監査用ペイロード */
+export interface AiDeleteRulePayload {
+  sourceMessageId: string;
+  matchedKeyword?: string;
+  candidateCount: number;
+  role: string | null;
+  /** 確定時は対象ルールID、ブロック/キャンセル時は undefined */
+  targetRuleId?: string;
+  targetRuleTitle?: string;
+  reason?: string;
+}
+
+/** AI起動の予定追加監査用ペイロード */
+export interface AiAddCalendarEventPayload {
+  sourceMessageId: string;
+  eventId: string;
+  title: string;
+  date: string;
+}
+
 export type ActivityPayload =
   | ClassifyPayload
   | ConfirmPayload
@@ -67,7 +92,9 @@ export type ActivityPayload =
   | CancelPayload
   | RuleChatPayload
   | AiDeleteChildPayload
-  | AiAddRuleSavedPayload;
+  | AiAddRuleSavedPayload
+  | AiDeleteRulePayload
+  | AiAddCalendarEventPayload;
 
 export interface ActivityLog {
   id: string;

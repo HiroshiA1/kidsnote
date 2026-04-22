@@ -1,4 +1,4 @@
-export type IntentType = 'growth' | 'incident' | 'handover' | 'child_update' | 'add_child' | 'add_staff' | 'rule_query' | 'delete_child' | 'add_rule';
+export type IntentType = 'growth' | 'incident' | 'handover' | 'child_update' | 'add_child' | 'add_staff' | 'rule_query' | 'delete_child' | 'add_rule' | 'delete_rule' | 'update_rule' | 'add_calendar_event';
 
 export interface GrowthData {
   child_names: string[];
@@ -67,9 +67,58 @@ export interface AddRuleData {
   related_rule_ids?: string[];
 }
 
+/** ルール削除 — AI起動の破壊的操作。原文のルール関連語+削除語 併存が必須 */
+export interface DeleteRuleData {
+  /** 対象ルールタイトルのヒント(AI抽出) */
+  target_title_hint: string;
+  /** 原文に含まれていた削除語(監査用) */
+  matched_keyword?: string;
+}
+
+/** ルール更新 — AIがルール本文の変更を提案、教諭が RuleModal で編集確定 */
+export interface UpdateRuleData {
+  /** 対象ルールタイトルのヒント(AI抽出) */
+  target_title_hint: string;
+  /** 更新後のタイトル(同じでよい場合は target_title_hint と同じ) */
+  updated_title?: string;
+  /** 更新後の本文 */
+  updated_content?: string;
+  /** 更新後のカテゴリ */
+  updated_category?: string;
+}
+
+/** 予定追加 — AI提案を CalendarEventModal で編集確定 */
+export interface AddCalendarEventData {
+  title: string;
+  /** ISO date (YYYY-MM-DD)。AIが特定できない場合は本日 */
+  date?: string;
+  /** HH:mm 形式、終日なら未指定 */
+  start_time?: string;
+  end_time?: string;
+  all_day?: boolean;
+  /** カレンダーカテゴリ名(行事/健診 等) */
+  category?: string;
+  /** 場所 */
+  location?: string;
+  /** 詳細・説明 */
+  description?: string;
+}
+
 export interface IntentResult {
   intent: IntentType;
-  data: GrowthData | IncidentData | HandoverData | ChildUpdateData | AddChildData | AddStaffData | RuleQueryData | DeleteChildData | AddRuleData;
+  data:
+    | GrowthData
+    | IncidentData
+    | HandoverData
+    | ChildUpdateData
+    | AddChildData
+    | AddStaffData
+    | RuleQueryData
+    | DeleteChildData
+    | AddRuleData
+    | DeleteRuleData
+    | UpdateRuleData
+    | AddCalendarEventData;
   confidence?: number;
 }
 

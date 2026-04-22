@@ -18,6 +18,12 @@ interface Props {
   initialDate?: string;
   initialStartTime?: string;
   event?: CalendarEvent | null;
+  /** AI提案からの起動かどうか。true の場合、ヘッダ注記表示 + 保存時の intent 監査ログ用フック */
+  aiSuggested?: boolean;
+  /** aiSuggested=true のときの元メッセージID(AppLayout で confirmMessage に使う) */
+  aiSourceMessageId?: string;
+  /** AI提案が実データとして保存されたタイミングで呼ばれる。AppLayout側で message confirm 用。savedEvent が渡される */
+  onAiSuggestionSaved?: (savedEvent: CalendarEvent) => void;
 }
 
 function addMinutes(hm: string, delta: number): string {
@@ -58,7 +64,7 @@ function emptyEvent(date: string, fiscalYear: number, startTime?: string): Calen
   };
 }
 
-export function CalendarEventModal({ open, onClose, initialDate, initialStartTime, event }: Props) {
+export function CalendarEventModal({ open, onClose, initialDate, initialStartTime, event, aiSuggested = false, aiSourceMessageId, onAiSuggestionSaved }: Props) {
   const { addCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fiscalYear, staff, settings, children: childrenData, currentStaffId, addToast, openConfirm } = useApp();
   const calendarCategories = settings.calendarCategories ?? DEFAULT_CALENDAR_CATEGORIES;
   const [form, setForm] = useState<CalendarEvent>(() =>
@@ -76,7 +82,9 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
 
   if (!open) return null;
 
-  const isEdit = !!event;
+  // aiSuggested=true のときは、event prop が付いていても新規追加(addCalendarEvent)として扱う
+  // (pending 中のドラフトID を持っているだけで store には未登録のため)
+  const isEdit = !!event && !aiSuggested;
   const titleMissing = !form.title.trim();
   const showTitleError = submitAttempted && titleMissing;
 
@@ -106,7 +114,14 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
     if (isEdit) {
       updateCalendarEvent(payload);
     } else {
+      if (aiSuggested) {
+        // AI提案は drafted ID を新しい UUID に差し替えて登録する
+        payload.id = `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      }
       addCalendarEvent(payload);
+    }
+    if (aiSuggested && onAiSuggestionSaved) {
+      onAiSuggestionSaved(payload);
     }
     onClose();
   };
@@ -137,7 +152,16 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-surface rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
         <header className="sticky top-0 bg-surface border-b border-secondary/20 px-6 py-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-headline">{isEdit ? '予定を編集' : '予定を追加'}</h2>
+          <div>
+            <h2 className="text-lg font-bold text-headline">
+              {aiSuggested ? 'AI提案の予定を確認して保存' : (isEdit ? '予定を編集' : '予定を追加')}
+            </h2>
+            {aiSuggested && (
+              <p className="text-xs text-paragraph/60 mt-0.5">
+                AIが入力内容から構造化した予定案です。内容を確認してから保存してください。
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
             aria-label="閉じる"

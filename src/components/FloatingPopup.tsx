@@ -36,11 +36,18 @@ export function FloatingPopup(_props: FloatingPopupProps) {
   if (pendingMessages.length === 0) return null;
 
   const config = current.result ? intentConfig[current.result.intent] : null;
-  const isRuleQuery = current.result?.intent === 'rule_query';
-  const isEmergency = current.isEmergency === true;
-  const isDeleteChild = current.result?.intent === 'delete_child';
-  const isAddRule = current.result?.intent === 'add_rule';
   const aiIntent = current.result?.intent;
+  const isRuleQuery = aiIntent === 'rule_query';
+  const isEmergency = current.isEmergency === true;
+  const isDeleteChild = aiIntent === 'delete_child';
+  const isAddRule = aiIntent === 'add_rule';
+  const isDeleteRule = aiIntent === 'delete_rule';
+  const isUpdateRule = aiIntent === 'update_rule';
+  const isAddCalendarEvent = aiIntent === 'add_calendar_event';
+  /** 確認/キャンセルボタンのみで要録マーク不要な intent(AI action系) */
+  const isAiAction = isDeleteChild || isAddRule || isDeleteRule || isUpdateRule || isAddCalendarEvent;
+  /** 破壊的 intent(ボタンを alert 色に) */
+  const isDestructive = isDeleteChild || isDeleteRule;
   const aiMisalignedWithEmergency = isEmergency && aiIntent && aiIntent !== 'incident';
 
   const resolvedDeleteTarget =
@@ -166,7 +173,7 @@ export function FloatingPopup(_props: FloatingPopupProps) {
         {/* Actions */}
         {current.status === 'confirmed' && current.result && (
           <div className="px-4 py-3 border-t border-paragraph/10">
-            {!isRuleQuery && !isDeleteChild && !isAddRule && (
+            {!isRuleQuery && !isAiAction && (
               <div className="flex gap-2 mb-2">
                 <button
                   onClick={handleMarkForRecord}
@@ -188,7 +195,7 @@ export function FloatingPopup(_props: FloatingPopupProps) {
                 onClick={handleConfirm}
                 disabled={confirmDisabled}
                 className={`flex-1 py-2 px-3 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isEmergency || isDeleteChild ? 'bg-alert' : 'bg-button'
+                  isEmergency || isDestructive ? 'bg-alert' : 'bg-button'
                 }`}
               >
                 {isEmergency ? (
@@ -200,7 +207,13 @@ export function FloatingPopup(_props: FloatingPopupProps) {
                   </span>
                 ) : isDeleteChild
                   ? '対象を確認して削除へ'
+                  : isDeleteRule
+                  ? '対象を確認して削除へ'
+                  : isUpdateRule
+                  ? '対象を確認して編集へ'
                   : isAddRule
+                  ? '内容を確認して保存'
+                  : isAddCalendarEvent
                   ? '内容を確認して保存'
                   : (config?.actionLabel ?? '確認')}
               </button>

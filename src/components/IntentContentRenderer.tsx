@@ -1,7 +1,7 @@
 'use client';
 
 import { useApp } from './AppLayout';
-import { IntentResult, GrowthData, IncidentData, HandoverData, ChildUpdateData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData } from '@/types/intent';
+import { IntentResult, GrowthData, IncidentData, HandoverData, ChildUpdateData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData } from '@/types/intent';
 import { ChildLinks } from './ChildLink';
 import { severityLabels, severityColors, genderLabels, fieldLabels } from '@/lib/formatters';
 
@@ -213,6 +213,52 @@ function AddRuleContent({ data, compact }: { data: AddRuleData; compact: boolean
   );
 }
 
+function DeleteRuleContent({ data, compact }: { data: DeleteRuleData; compact: boolean }) {
+  const textCls = compact ? 'text-xs' : 'text-sm';
+  return (
+    <div className={`${textCls} space-y-1`}>
+      <p className="font-medium text-alert">AIが削除対象と判定したルール: {data.target_title_hint}</p>
+      {data.matched_keyword && (
+        <p className="text-paragraph/50 text-[11px]">原文で検出: 「{data.matched_keyword}」</p>
+      )}
+      <p className="text-paragraph/60 text-[11px]">
+        確定前に対象ルールを特定し、確認ダイアログを表示します。
+      </p>
+    </div>
+  );
+}
+
+function UpdateRuleContent({ data, compact }: { data: UpdateRuleData; compact: boolean }) {
+  const textCls = compact ? 'text-xs' : 'text-sm';
+  return (
+    <div className={`${textCls} space-y-1`}>
+      <p className="font-medium text-headline">AIが更新対象と判定したルール: {data.target_title_hint}</p>
+      {data.updated_title && <p className="text-paragraph/70">新タイトル: {data.updated_title}</p>}
+      {data.updated_content && (
+        <p className="text-paragraph/70 whitespace-pre-wrap line-clamp-3">新内容: {data.updated_content}</p>
+      )}
+      {data.updated_category && <p className="text-paragraph/60 text-[11px]">新カテゴリ: {data.updated_category}</p>}
+      <p className="text-paragraph/60 text-[11px]">確定ボタンで編集モーダルが開きます。</p>
+    </div>
+  );
+}
+
+function AddCalendarEventContent({ data, compact }: { data: AddCalendarEventData; compact: boolean }) {
+  const textCls = compact ? 'text-xs' : 'text-sm';
+  return (
+    <div className={`${textCls} space-y-1`}>
+      <p className="font-medium text-headline">{data.title || '(タイトル未設定)'}</p>
+      <p className="text-paragraph/70">
+        {data.date ?? '日付未定'}
+        {data.all_day ? ' / 終日' : (data.start_time ? ` ${data.start_time}${data.end_time ? '–' + data.end_time : ''}` : '')}
+      </p>
+      {data.location && <p className="text-paragraph/60 text-[11px]">場所: {data.location}</p>}
+      {data.description && <p className="text-paragraph/70 line-clamp-2">{data.description}</p>}
+      <p className="text-paragraph/60 text-[11px]">確定ボタンで予定モーダルが開きます。</p>
+    </div>
+  );
+}
+
 export function IntentContentRenderer({ result, mode, linkedChildIds, ruleAnswer }: IntentContentRendererProps) {
   const compact = mode === 'compact';
 
@@ -235,5 +281,11 @@ export function IntentContentRenderer({ result, mode, linkedChildIds, ruleAnswer
       return <DeleteChildContent data={result.data as DeleteChildData} compact={compact} />;
     case 'add_rule':
       return <AddRuleContent data={result.data as AddRuleData} compact={compact} />;
+    case 'delete_rule':
+      return <DeleteRuleContent data={result.data as DeleteRuleData} compact={compact} />;
+    case 'update_rule':
+      return <UpdateRuleContent data={result.data as UpdateRuleData} compact={compact} />;
+    case 'add_calendar_event':
+      return <AddCalendarEventContent data={result.data as AddCalendarEventData} compact={compact} />;
   }
 }

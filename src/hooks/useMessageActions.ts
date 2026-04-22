@@ -2,10 +2,10 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useApp } from '@/components/AppLayout';
-import { hasDeleteChildKeyword } from '@/lib/constants/deleteKeywords';
+import { hasDeleteChildKeyword, hasDeleteRuleSignal } from '@/lib/constants/deleteKeywords';
 import { hasMinRole } from '@/lib/supabase/auth';
-import { AddRuleData, DeleteChildData, InputMessage } from '@/types/intent';
-import { BASIC_RULE_CATEGORIES } from '@/types/rule';
+import { AddCalendarEventData, AddRuleData, DeleteChildData, DeleteRuleData, InputMessage, UpdateRuleData } from '@/types/intent';
+import { BASIC_RULE_CATEGORIES, Rule } from '@/types/rule';
 import { recordActivity } from '@/lib/activityLog';
 import { ChildWithGrowth } from '@/lib/childrenStore';
 
@@ -32,6 +32,9 @@ export function useMessageActions() {
     openConfirm,
     addToast,
     setPendingAiRule,
+    setPendingAiCalendarEvent,
+    rules,
+    deleteRule,
     currentUserRole,
   } = useApp();
 
@@ -182,6 +185,141 @@ export function useMessageActions() {
     [setPendingAiRule],
   );
 
+  /** タイトルヒントから既存ルールを緩やかにマッチ(部分一致/双方向) */
+  const findMatchingRules = useCallback(
+    (titleHint: string): Rule[] => {
+      const h = titleHint.trim();
+      if (!h) return [];
+      return rules.filter(r => r.title.includes(h) || h.includes(r.title));
+    },
+    [rules],
+  );
+
+  const performDeleteRule = useCallback(
+    async (msg: InputMessage) => {
+      const data = msg.result?.data as DeleteRuleData | undefined;
+      const matchedKeyword = data?.matched_keyword;
+      const logBlocked = (reason: string, candidateCount: number, target?: Rule) =>
+        recordActivity('ai_delete_rule_blocked', {
+          sourceMessageId: msg.id,
+          matchedKeyword,
+          candidateCount,
+          role: currentUserRole,
+          targetRuleId: target?.id,
+          targetRuleTitle: target?.title,
+          reason,
+        });
+      // 二重ガード: 原文にルール削除シグナル(削除語+ルール文脈)があるか
+      if (!hasDeleteRuleSignal(msg.content)) {
+        addToast({ type: 'error', message: 'AIがルール削除と判定しましたが、原文に削除語+ルール文脈がないため中止しました' });
+        logBlocked('no_explicit_rule_delete_signal', 0);
+        cancelMessage(msg.id);
+        return;
+      }
+      // ロール: admin|manager のみ
+      if (!canDelete) {
+        addToast({ type: 'error', message: 'ルール削除は管理者・主任のみ実行できます。管理者にご依頼ください。' });
+        logBlocked('insufficient_role', 0);
+        return;
+      }
+      const candidates = findMatchingRules(data?.target_title_hint ?? '');
+      if (candidates.length === 0) {
+        addToast({ type: 'error', message: `「${data?.target_title_hint ?? '不明'}」に一致するルールが見つかりません。タイトルを正確に指定してください。` });
+        logBlocked('no_matching_rule', 0);
+        return;
+      }
+      if (candidates.length > 1) {
+        const names = candidates.map(c => `「${c.title}」`).join('、');
+        addToast({ type: 'info', message: `同じタイトルのルールが複数あります(${names})。ルール管理画面で削除してください。` });
+        logBlocked('multiple_matches', candidates.length);
+        return;
+      }
+      const target = candidates[0];
+      const confirmed = await openConfirm({
+        title: `ルール「${target.title}」を削除します`,
+        message: 'この操作は取り消せません。ルールは復元できません。',
+        type: 'danger',
+        confirmLabel: '削除する',
+      });
+      if (confirmed) {
+        deleteRule(target.id);
+        confirmMessage(msg.id);
+        addToast({ type: 'success', message: `ルール「${target.title}」を削除しました` });
+        recordActivity('ai_delete_rule_confirmed', {
+          sourceMessageId: msg.id,
+          matchedKeyword,
+          candidateCount: 1,
+          role: currentUserRole,
+          targetRuleId: target.id,
+          targetRuleTitle: target.title,
+        });
+      } else {
+        recordActivity('ai_delete_rule_cancelled', {
+          sourceMessageId: msg.id,
+          matchedKeyword,
+          candidateCount: 1,
+          role: currentUserRole,
+          targetRuleId: target.id,
+          targetRuleTitle: target.title,
+        });
+      }
+    },
+    [addToast, cancelMessage, canDelete, confirmMessage, currentUserRole, deleteRule, findMatchingRules, openConfirm],
+  );
+
+  const performUpdateRule = useCallback(
+    (msg: InputMessage) => {
+      const data = msg.result?.data as UpdateRuleData | undefined;
+      if (!data) return;
+      if (!canDelete) {
+        addToast({ type: 'error', message: 'ルール編集は管理者・主任のみ実行できます。管理者にご依頼ください。' });
+        return;
+      }
+      const candidates = findMatchingRules(data.target_title_hint ?? '');
+      if (candidates.length === 0) {
+        addToast({ type: 'error', message: `「${data.target_title_hint ?? '不明'}」に一致するルールが見つかりません。タイトルを正確に指定してください。` });
+        return;
+      }
+      if (candidates.length > 1) {
+        addToast({ type: 'info', message: '同じタイトルのルールが複数あります。ルール管理画面で編集してください。' });
+        return;
+      }
+      const target = candidates[0];
+      const normalizedCategory = BASIC_RULE_CATEGORIES.includes(data.updated_category ?? '') ? data.updated_category! : target.category;
+      setPendingAiRule({
+        sourceMessageId: msg.id,
+        updateTargetId: target.id,
+        draft: {
+          title: data.updated_title || target.title,
+          content: data.updated_content || target.content,
+          category: normalizedCategory,
+        },
+      });
+    },
+    [addToast, canDelete, findMatchingRules, setPendingAiRule],
+  );
+
+  const performAddCalendarEvent = useCallback(
+    (msg: InputMessage) => {
+      const data = msg.result?.data as AddCalendarEventData | undefined;
+      if (!data) return;
+      setPendingAiCalendarEvent({
+        sourceMessageId: msg.id,
+        draft: {
+          title: data.title,
+          date: data.date,
+          startTime: data.start_time,
+          endTime: data.end_time,
+          allDay: data.all_day ?? false,
+          category: data.category ?? '行事',
+          location: data.location,
+          description: data.description,
+        },
+      });
+    },
+    [setPendingAiCalendarEvent],
+  );
+
   const performConfirm = useCallback(
     async (msg: InputMessage, candidates: ChildWithGrowth[]): Promise<{ dismiss: boolean }> => {
       // 緊急モードは最優先
@@ -197,6 +335,18 @@ export function useMessageActions() {
         performAddRule(msg);
         return { dismiss: false };
       }
+      if (msg.result?.intent === 'delete_rule') {
+        await performDeleteRule(msg);
+        return { dismiss: false };
+      }
+      if (msg.result?.intent === 'update_rule') {
+        performUpdateRule(msg);
+        return { dismiss: false };
+      }
+      if (msg.result?.intent === 'add_calendar_event') {
+        performAddCalendarEvent(msg);
+        return { dismiss: false };
+      }
       if (msg.result?.intent === 'rule_query') {
         // rule_query はそのまま popup から閉じるだけ
         return { dismiss: true };
@@ -204,7 +354,7 @@ export function useMessageActions() {
       confirmMessage(msg.id);
       return { dismiss: false };
     },
-    [confirmMessage, performDeleteChild, performAddRule],
+    [confirmMessage, performDeleteChild, performAddRule, performDeleteRule, performUpdateRule, performAddCalendarEvent],
   );
 
   const performCancel = useCallback(
@@ -219,11 +369,24 @@ export function useMessageActions() {
           role: currentUserRole,
           targetChildId: target?.id,
         });
+      } else if (msg.result?.intent === 'delete_rule') {
+        // popup キャンセル経路も監査ログに残す。対象は原文タイトルヒントから再解決
+        const data = msg.result.data as DeleteRuleData | undefined;
+        const ruleCandidates = findMatchingRules(data?.target_title_hint ?? '');
+        const target = ruleCandidates.length === 1 ? ruleCandidates[0] : undefined;
+        recordActivity('ai_delete_rule_cancelled', {
+          sourceMessageId: msg.id,
+          matchedKeyword: data?.matched_keyword,
+          candidateCount: ruleCandidates.length,
+          role: currentUserRole,
+          targetRuleId: target?.id,
+          targetRuleTitle: target?.title,
+        });
       }
       cancelMessage(msg.id);
       setSelectedCandidateId(null);
     },
-    [cancelMessage, currentUserRole, resolveDeleteTarget],
+    [cancelMessage, currentUserRole, findMatchingRules, resolveDeleteTarget],
   );
 
   return {

@@ -20,6 +20,8 @@ import { ToastContainer, useToast, ToastMessage } from './Toast';
 import { ConfirmDialogContainer, useConfirm, ConfirmOptions } from './ConfirmDialog';
 import { RuleModal, RuleSavePayload } from './RuleModal';
 import { Breadcrumbs } from './Breadcrumbs';
+import { CalendarEventModal } from './CalendarEventModal';
+import { getJstDateString } from '@/lib/localDate';
 import { recordActivity } from '@/lib/activityLog';
 import { useHydration } from '@/hooks/useHydration';
 import { useMessageController } from '@/hooks/useMessageController';
@@ -86,8 +88,11 @@ interface AppContextType {
   addToast: (toast: Omit<ToastMessage, 'id'>) => string;
   openConfirm: (options: ConfirmOptions) => Promise<boolean>;
   /** AI提案ルールの編集モーダルを開くためのstate(FloatingPopupがセット、AppLayoutがレンダリング) */
-  pendingAiRule: { sourceMessageId: string; draft: Partial<Rule> } | null;
-  setPendingAiRule: (value: { sourceMessageId: string; draft: Partial<Rule> } | null) => void;
+  pendingAiRule: { sourceMessageId: string; draft: Partial<Rule>; updateTargetId?: string } | null;
+  setPendingAiRule: (value: { sourceMessageId: string; draft: Partial<Rule>; updateTargetId?: string } | null) => void;
+  /** AI提案予定の編集モーダルを開くためのstate */
+  pendingAiCalendarEvent: { sourceMessageId: string; draft: Partial<CalendarEvent> } | null;
+  setPendingAiCalendarEvent: (value: { sourceMessageId: string; draft: Partial<CalendarEvent> } | null) => void;
   calendarEvents: CalendarEvent[];
   addCalendarEvent: (event: CalendarEvent) => void;
   updateCalendarEvent: (event: CalendarEvent) => void;
@@ -204,7 +209,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [ruleChatMessages, setRuleChatMessages] = useState<RuleChatMessage[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
-  const [pendingAiRule, setPendingAiRule] = useState<{ sourceMessageId: string; draft: Partial<Rule> } | null>(null);
+  const [pendingAiRule, setPendingAiRule] = useState<{ sourceMessageId: string; draft: Partial<Rule>; updateTargetId?: string } | null>(null);
+  const [pendingAiCalendarEvent, setPendingAiCalendarEvent] = useState<{ sourceMessageId: string; draft: Partial<CalendarEvent> } | null>(null);
 
   const addChildToStore = (child: ChildWithGrowth) => {
     setChildrenData(prev => [...prev, child]);
@@ -349,6 +355,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         openConfirm,
         pendingAiRule,
         setPendingAiRule,
+        pendingAiCalendarEvent,
+        setPendingAiCalendarEvent,
         calendarEvents,
         addCalendarEvent,
         updateCalendarEvent,
@@ -406,29 +414,88 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <ConfirmDialogContainer pending={confirmPending} onResolve={resolveConfirm} />
         {pendingAiRule && (
           <RuleModal
-            rule={pendingAiRule.draft}
+            rule={pendingAiRule.updateTargetId ? { id: pendingAiRule.updateTargetId, ...pendingAiRule.draft } : pendingAiRule.draft}
             aiSuggested
             onSave={(payload: RuleSavePayload) => {
-              const newRule: Rule = {
-                id: `rule-${Date.now()}`,
-                title: payload.title,
-                content: payload.content,
-                category: payload.category,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              };
-              addRule(newRule);
-              confirmMessage(pendingAiRule.sourceMessageId);
-              recordActivity('ai_add_rule_saved', {
-                sourceMessageId: pendingAiRule.sourceMessageId,
-                ruleId: newRule.id,
-                ruleTitle: newRule.title,
-                category: newRule.category,
-              });
-              addToast({ type: 'success', message: `ルール「${newRule.title}」を追加しました` });
+              if (pendingAiRule.updateTargetId) {
+                // 更新パス
+                const existing = rules.find(r => r.id === pendingAiRule.updateTargetId);
+                if (existing) {
+                  updateRule({
+                    ...existing,
+                    title: payload.title,
+                    content: payload.content,
+                    category: payload.category,
+                    updatedAt: new Date(),
+                  });
+                  confirmMessage(pendingAiRule.sourceMessageId);
+                  recordActivity('ai_update_rule_saved', {
+                    sourceMessageId: pendingAiRule.sourceMessageId,
+                    ruleId: existing.id,
+                    ruleTitle: payload.title,
+                    category: payload.category,
+                  });
+                  addToast({ type: 'success', message: `ルール「${payload.title}」を更新しました` });
+                }
+              } else {
+                // 新規追加パス
+                const newRule: Rule = {
+                  id: `rule-${Date.now()}`,
+                  title: payload.title,
+                  content: payload.content,
+                  category: payload.category,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                };
+                addRule(newRule);
+                confirmMessage(pendingAiRule.sourceMessageId);
+                recordActivity('ai_add_rule_saved', {
+                  sourceMessageId: pendingAiRule.sourceMessageId,
+                  ruleId: newRule.id,
+                  ruleTitle: newRule.title,
+                  category: newRule.category,
+                });
+                addToast({ type: 'success', message: `ルール「${newRule.title}」を追加しました` });
+              }
               setPendingAiRule(null);
             }}
             onClose={() => setPendingAiRule(null)}
+          />
+        )}
+        {pendingAiCalendarEvent && (
+          <CalendarEventModal
+            open={true}
+            onClose={() => setPendingAiCalendarEvent(null)}
+            initialDate={pendingAiCalendarEvent.draft.date}
+            initialStartTime={pendingAiCalendarEvent.draft.startTime}
+            event={{
+              id: `evt_pending_${pendingAiCalendarEvent.sourceMessageId}`,
+              title: pendingAiCalendarEvent.draft.title ?? '',
+              date: pendingAiCalendarEvent.draft.date ?? getJstDateString(),
+              allDay: pendingAiCalendarEvent.draft.allDay ?? false,
+              startTime: pendingAiCalendarEvent.draft.startTime,
+              endTime: pendingAiCalendarEvent.draft.endTime,
+              category: pendingAiCalendarEvent.draft.category ?? '行事',
+              status: 'scheduled',
+              visibilityScope: 'all_staff',
+              fiscalYear,
+              description: pendingAiCalendarEvent.draft.description,
+              location: pendingAiCalendarEvent.draft.location,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }}
+            aiSuggested
+            aiSourceMessageId={pendingAiCalendarEvent.sourceMessageId}
+            onAiSuggestionSaved={(savedEvent) => {
+              confirmMessage(pendingAiCalendarEvent.sourceMessageId);
+              recordActivity('ai_add_calendar_event_saved', {
+                sourceMessageId: pendingAiCalendarEvent.sourceMessageId,
+                eventId: savedEvent.id,
+                title: savedEvent.title,
+                date: savedEvent.date,
+              });
+              setPendingAiCalendarEvent(null);
+            }}
           />
         )}
         {!isLoginPage && <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} selectedChildName={selectedChildId ? (() => { const c = childrenData.find(ch => ch.id === selectedChildId); return c ? `${c.lastNameKanji || c.lastName} ${c.firstNameKanji || c.firstName}`.trim() : null; })() : null} onError={(msg) => addToast({ type: 'error', message: msg })} />}

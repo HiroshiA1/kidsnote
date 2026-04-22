@@ -105,6 +105,36 @@ export const intentConfig: Record<IntentType, IntentConfigItem> = {
     cardBg: 'bg-tertiary/10',
     href: '/rules',
   },
+  delete_rule: {
+    label: 'ルール削除',
+    icon: '🗑️',
+    color: 'text-alert',
+    bgColor: 'bg-alert/10',
+    borderColor: 'border-alert/60',
+    actionLabel: '対象を確認して削除へ',
+    cardBg: 'bg-alert/5',
+    href: '/rules',
+  },
+  update_rule: {
+    label: 'ルール更新',
+    icon: '✏️',
+    color: 'text-headline',
+    bgColor: 'bg-button/10',
+    borderColor: 'border-button/50',
+    actionLabel: '内容を確認して保存',
+    cardBg: 'bg-button/5',
+    href: '/rules',
+  },
+  add_calendar_event: {
+    label: '予定追加',
+    icon: '📅',
+    color: 'text-headline',
+    bgColor: 'bg-secondary/30',
+    borderColor: 'border-button',
+    actionLabel: '内容を確認して保存',
+    cardBg: 'bg-secondary/20',
+    href: '/calendar',
+  },
 };
 
 /** ダッシュボードで表示する記録タイプ */
