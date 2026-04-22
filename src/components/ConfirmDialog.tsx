@@ -27,30 +27,37 @@ export interface ConfirmOptions {
 interface PendingConfirm {
   options: ConfirmOptions;
   resolve: (value: boolean) => void;
+  /** openConfirm 呼び出し時にフォーカスしていた要素(閉じ時にフォーカスを戻す) */
+  openerFocus: HTMLElement | null;
 }
 
+/**
+ * 確認ダイアログキュー管理フック。
+ * 同時に複数の openConfirm が呼ばれてもキューに積まれ、前から順に表示される。
+ * (以前は単一stateで置換していたため、前件resolveが false で捨てられる仕様だった)
+ */
 export function useConfirm() {
-  const [pending, setPending] = useState<PendingConfirm | null>(null);
+  const [queue, setQueue] = useState<PendingConfirm[]>([]);
 
   const openConfirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
     return new Promise<boolean>(resolve => {
-      setPending(prev => {
-        // 前件が残っている場合は false で解決して宙に浮くPromiseを防ぐ
-        if (prev) prev.resolve(false);
-        return { options, resolve };
-      });
+      const openerFocus =
+        typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+      setQueue(prev => [...prev, { options, resolve, openerFocus }]);
     });
   }, []);
 
-  const handleResolve = useCallback(
-    (value: boolean) => {
-      if (pending) {
-        pending.resolve(value);
-        setPending(null);
-      }
-    },
-    [pending],
-  );
+  const handleResolve = useCallback((value: boolean) => {
+    setQueue(prev => {
+      if (prev.length === 0) return prev;
+      const [front, ...rest] = prev;
+      front.resolve(value);
+      return rest;
+    });
+  }, []);
+
+  // 現在表示される1件のみ返す(互換性のため pending という名前を維持)
+  const pending = queue[0] ?? null;
 
   return { openConfirm, pending, resolveConfirm: handleResolve };
 }
@@ -65,12 +72,12 @@ export function ConfirmDialogContainer({ pending, onResolve }: ConfirmDialogCont
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  // openConfirm を呼ぶ直前にフォーカスしていた要素。閉じた後に戻す
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  // 今消えた pending の openerFocus を覚えておき、pending が null になったタイミングで戻す
+  const lastOpenerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (pending) {
-      previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+      lastOpenerRef.current = pending.openerFocus;
       setTypedInput('');
       setTimeout(() => {
         if (pending.options.typedConfirm) {
@@ -79,10 +86,16 @@ export function ConfirmDialogContainer({ pending, onResolve }: ConfirmDialogCont
           cancelRef.current?.focus();
         }
       }, 0);
-    } else if (previouslyFocusedRef.current) {
-      // 閉じた直後にフォーカスを元の要素に戻す(a11y)
-      previouslyFocusedRef.current.focus?.();
-      previouslyFocusedRef.current = null;
+    } else if (lastOpenerRef.current) {
+      const opener = lastOpenerRef.current;
+      lastOpenerRef.current = null;
+      // opener が既に DOM から外れている場合(例: 元のpopupが消えた等)は body にフォールバック
+      const stillInDom = opener.isConnected;
+      if (stillInDom && typeof opener.focus === 'function') {
+        opener.focus();
+      } else if (typeof document !== 'undefined') {
+        document.body?.focus?.();
+      }
     }
   }, [pending]);
 

@@ -1,36 +1,28 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useApp } from './AppLayout';
 import { intentConfig } from '@/lib/constants/intentConfig';
 import { IntentContentRenderer } from './IntentContentRenderer';
-import { hasDeleteChildKeyword } from '@/lib/constants/deleteKeywords';
-import { hasMinRole } from '@/lib/supabase/auth';
-import { AddRuleData, DeleteChildData, InputMessage } from '@/types/intent';
-import { BASIC_RULE_CATEGORIES } from '@/types/rule';
-import { recordActivity } from '@/lib/activityLog';
+import { useMessageActions } from '@/hooks/useMessageActions';
 
 interface FloatingPopupProps {
   sidebarCollapsed: boolean;
 }
 
 export function FloatingPopup(_props: FloatingPopupProps) {
+  const { messages, markForRecord } = useApp();
   const {
-    messages,
-    confirmMessage,
-    cancelMessage,
-    markForRecord,
-    children: childrenData,
-    attendance,
-    removeChild,
-    openConfirm,
-    addToast,
-    setPendingAiRule,
-    currentUserRole,
-  } = useApp();
+    selectedCandidateId,
+    setSelectedCandidateId,
+    getDeleteCandidates,
+    canDelete,
+    performConfirm,
+    performCancel,
+  } = useMessageActions();
+
+  // rule_query の「閉じる」ためのローカル dismissed セット(message 自体は削除せずに popup から隠すだけ)
   const [dismissed, setDismissed] = useState<string[]>([]);
-  // delete_child で候補が複数ある場合、教諭が選んだID
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
 
   // pending/confirmed messages (not yet saved)
   const pendingMessages = messages.filter(
@@ -39,15 +31,7 @@ export function FloatingPopup(_props: FloatingPopupProps) {
 
   const current = pendingMessages[0];
   const queueCount = pendingMessages.length;
-
-  // delete_child の候補園児は「原文由来の aiMatchedChildIds」からのみ解決。
-  // linkedChildIds には selectedChildId が含まれうるため、破壊的操作の対象特定には使わない(誤削除防止)。
-  const deleteCandidates = useMemo(() => {
-    if (current?.result?.intent !== 'delete_child') return [];
-    return (current.aiMatchedChildIds ?? [])
-      .map(id => childrenData.find(c => c.id === id))
-      .filter((c): c is NonNullable<typeof c> => !!c);
-  }, [current, childrenData]);
+  const deleteCandidates = getDeleteCandidates(current);
 
   if (pendingMessages.length === 0) return null;
 
@@ -58,9 +42,7 @@ export function FloatingPopup(_props: FloatingPopupProps) {
   const isAddRule = current.result?.intent === 'add_rule';
   const aiIntent = current.result?.intent;
   const aiMisalignedWithEmergency = isEmergency && aiIntent && aiIntent !== 'incident';
-  const canDelete = hasMinRole(currentUserRole, 'manager'); // admin | manager のみ
 
-  // delete_child のターゲット一意化
   const resolvedDeleteTarget =
     deleteCandidates.length === 1
       ? deleteCandidates[0]
@@ -68,151 +50,15 @@ export function FloatingPopup(_props: FloatingPopupProps) {
       ? deleteCandidates.find(c => c.id === selectedCandidateId) ?? null
       : null;
 
-  const handleDeleteChildAction = async (msg: InputMessage) => {
-    const data = msg.result?.data as DeleteChildData | undefined;
-    const matchedKeyword = data?.matched_keyword;
-    const candidateCount = deleteCandidates.length;
-    // 二重ガード: 原文の削除語を再検証
-    if (!hasDeleteChildKeyword(msg.content)) {
-      addToast({
-        type: 'error',
-        message: 'AIが削除と判定しましたが、原文に明示的な削除語がないため中止しました',
-      });
-      recordActivity('ai_delete_child_blocked', {
-        sourceMessageId: msg.id,
-        matchedKeyword,
-        candidateCount,
-        role: currentUserRole,
-        reason: 'no_explicit_keyword_in_raw_text',
-      });
-      cancelMessage(msg.id);
-      return;
-    }
-    // ロールチェック
-    if (!canDelete) {
-      addToast({
-        type: 'error',
-        message: '園児の削除は管理者・主任のみ実行できます。管理者にご依頼ください。',
-      });
-      recordActivity('ai_delete_child_blocked', {
-        sourceMessageId: msg.id,
-        matchedKeyword,
-        candidateCount,
-        role: currentUserRole,
-        reason: 'insufficient_role',
-      });
-      return;
-    }
-    // 対象特定
-    if (deleteCandidates.length === 0) {
-      addToast({
-        type: 'error',
-        message: `「${data?.target_name ?? '不明'}」に一致する園児が見つかりません。フルネームやクラスで指定してください。`,
-      });
-      recordActivity('ai_delete_child_blocked', {
-        sourceMessageId: msg.id,
-        matchedKeyword,
-        candidateCount,
-        role: currentUserRole,
-        reason: 'no_matching_child',
-      });
-      return;
-    }
-    if (deleteCandidates.length > 1 && !resolvedDeleteTarget) {
-      addToast({ type: 'info', message: '同名の園児が複数います。候補から対象を選んでください。' });
-      return;
-    }
-    const target = resolvedDeleteTarget!;
-    const name = `${target.lastNameKanji || target.lastName} ${target.firstNameKanji || target.firstName}`.trim();
-    // 影響範囲
-    const growthCount = messages.filter(
-      m2 => m2.status === 'saved' && m2.result?.intent === 'growth' && m2.linkedChildIds?.includes(target.id),
-    ).length;
-    const attendanceCount = attendance.filter(a => a.childId === target.id).length;
-    const confirmed = await openConfirm({
-      title: `${name} さんを削除します`,
-      message: `クラス: ${target.className}\n園児情報のみ削除されます。関連する成長記録・出欠記録は残ります(Phase 2で退園処理に切り替え予定)。`,
-      type: 'danger',
-      influenceScope: [
-        { label: '関連する成長記録', count: growthCount },
-        { label: '関連する出欠記録', count: attendanceCount, unit: '日分' },
-      ],
-      typedConfirm: { keyword: '削除' },
-      confirmLabel: '削除する',
-    });
-    if (confirmed) {
-      removeChild(target.id);
-      confirmMessage(msg.id);
-      addToast({ type: 'success', message: `${name} さん(${target.className})を削除しました` });
-      recordActivity('ai_delete_child_confirmed', {
-        sourceMessageId: msg.id,
-        matchedKeyword,
-        candidateCount,
-        role: currentUserRole,
-        targetChildId: target.id,
-      });
-      setSelectedCandidateId(null);
-    } else {
-      recordActivity('ai_delete_child_cancelled', {
-        sourceMessageId: msg.id,
-        matchedKeyword,
-        candidateCount,
-        role: currentUserRole,
-        targetChildId: target.id,
-      });
-    }
-  };
-
-  const handleAddRuleAction = (msg: InputMessage) => {
-    const data = msg.result?.data as AddRuleData | undefined;
-    if (!data) return;
-    // AIが返したcategoryが既知のRuleCategory集合に含まれなければ 'other' に正規化
-    const normalizedCategory = BASIC_RULE_CATEGORIES.includes(data.category) ? data.category : 'other';
-    setPendingAiRule({
-      sourceMessageId: msg.id,
-      draft: {
-        title: data.title,
-        content: data.content,
-        category: normalizedCategory,
-      },
-    });
-  };
-
   const handleConfirm = async () => {
-    // 緊急モードは最優先 — rule_query/delete_child 分岐より前に confirmMessage へ流して incident/high 強制を発火させる
-    if (current.isEmergency) {
-      confirmMessage(current.id);
-      return;
-    }
-    if (isDeleteChild) {
-      await handleDeleteChildAction(current);
-      return;
-    }
-    if (isAddRule) {
-      handleAddRuleAction(current);
-      return;
-    }
-    if (current.result?.intent === 'rule_query') {
+    const result = await performConfirm(current, deleteCandidates);
+    if (result.dismiss) {
       setDismissed(prev => [...prev, current.id]);
-      return;
     }
-    confirmMessage(current.id);
   };
 
   const handleCancel = () => {
-    // delete_child の最初のポップアップでキャンセルされたケースも監査ログに残す
-    if (current.result?.intent === 'delete_child') {
-      const data = current.result.data as DeleteChildData | undefined;
-      recordActivity('ai_delete_child_cancelled', {
-        sourceMessageId: current.id,
-        matchedKeyword: data?.matched_keyword,
-        candidateCount: deleteCandidates.length,
-        role: currentUserRole,
-        targetChildId: resolvedDeleteTarget?.id,
-      });
-    }
-    cancelMessage(current.id);
-    setSelectedCandidateId(null);
+    performCancel(current, deleteCandidates);
   };
 
   const handleMarkForRecord = () => {
