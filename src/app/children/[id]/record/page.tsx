@@ -96,7 +96,7 @@ export default function RecordPage() {
   return (
     <div className="min-h-screen pb-8">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href={`/children/${params.id}`} className="text-paragraph/60 hover:text-paragraph transition-colors text-sm">
               ← 園児詳細に戻る
@@ -106,7 +106,7 @@ export default function RecordPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
         {/* 園児情報 + 学期セレクター */}
         <section className="bg-surface rounded-xl p-6 shadow-sm">
           <div className="flex items-center justify-between">

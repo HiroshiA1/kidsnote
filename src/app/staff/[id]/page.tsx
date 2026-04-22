@@ -243,7 +243,7 @@ export default function StaffDetailPage() {
   return (
     <div className="min-h-screen pb-8">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/staff" className="text-paragraph/60 hover:text-paragraph transition-colors text-sm">← 一覧に戻る</Link>
             <h1 className="text-xl font-bold text-headline">職員詳細</h1>
@@ -283,7 +283,7 @@ export default function StaffDetailPage() {
         />
       )}
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
         {/* 基本情報 */}
         <section className="bg-surface rounded-xl p-6 shadow-sm">
           <div className="flex items-start gap-4 mb-6">

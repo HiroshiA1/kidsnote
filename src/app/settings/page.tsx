@@ -1108,13 +1108,13 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4">
           <h1 className="text-xl font-bold text-headline">園の設定</h1>
           <p className="text-sm text-paragraph/60 mt-1">クラス・役職・メニュー表示・LLM接続などの管理</p>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 py-6">
         {/* タブ */}
         <div className="flex gap-1 mb-6 overflow-x-auto border-b border-secondary/20">
           {tabs.map(tab => (

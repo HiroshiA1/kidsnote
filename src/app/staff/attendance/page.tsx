@@ -118,7 +118,7 @@ export default function AttendancePage() {
     return (
         <div className="min-h-screen">
             <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-                <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
+                <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
                     <div>
                         <h1 className="text-xl font-bold text-headline">出勤簿</h1>
                         <p className="text-sm text-paragraph/60 mt-0.5">個人の出退勤記録</p>
@@ -141,7 +141,7 @@ export default function AttendancePage() {
                 </div>
             </header>
 
-            <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6">
+            <main className="max-w-6xl mx-auto px-3 sm:px-6 py-6">
                 {/* 職員セレクター */}
                 <div className="mb-6 bg-surface rounded-xl p-4 shadow-sm border border-secondary/20">
                     <label className="block text-xs font-medium text-paragraph/70 mb-2">ログイン職員</label>

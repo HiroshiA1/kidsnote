@@ -148,7 +148,7 @@ export default function GrowthRecordsPage() {
         </div>
       </RecordPageHeader>
 
-      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-6">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 py-6 space-y-6">
         <PendingSection
           pendingMessages={pendingMessages}
           confirmMessage={confirmMessage}
@@ -510,7 +510,7 @@ export default function GrowthRecordsPage() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90"
           onClick={() => setLightboxPhoto(null)}
         >
-          <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={e => e.stopPropagation()}>
+          <div className="relative max-w-6xl max-h-[90vh] w-full" onClick={e => e.stopPropagation()}>
             <img
               src={lightboxPhoto.url}
               alt={lightboxPhoto.name}

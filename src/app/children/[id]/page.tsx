@@ -102,7 +102,7 @@ export default function ChildDetailPage() {
     <div className="min-h-screen pb-8">
       {/* ヘッダー */}
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-4">
             <Link href="/children" className="text-paragraph/60 hover:text-paragraph transition-colors text-sm">
               ← 戻る
@@ -150,7 +150,7 @@ export default function ChildDetailPage() {
         />
       )}
 
-      <main className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 py-6 space-y-6">
+      <main className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-6 space-y-6">
         {/* 基本情報カード */}
         <section className="bg-surface rounded-xl p-6 shadow-sm">
           <div className="flex items-start justify-between mb-4">

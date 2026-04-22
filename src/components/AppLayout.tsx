@@ -19,6 +19,7 @@ import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit';
 import { ToastContainer, useToast, ToastMessage } from './Toast';
 import { ConfirmDialogContainer, useConfirm, ConfirmOptions } from './ConfirmDialog';
 import { RuleModal, RuleSavePayload } from './RuleModal';
+import { Breadcrumbs } from './Breadcrumbs';
 import { recordActivity } from '@/lib/activityLog';
 import { useHydration } from '@/hooks/useHydration';
 import { useMessageController } from '@/hooks/useMessageController';
@@ -397,6 +398,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <span className="text-sm font-bold text-headline">KidsNote</span>
             </div>
           )}
+          {!isLoginPage && <Breadcrumbs />}
           {children}
         </main>
         {!isLoginPage && <FloatingPopup sidebarCollapsed={sidebarCollapsed} />}

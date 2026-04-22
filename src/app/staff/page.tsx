@@ -229,7 +229,7 @@ export default function StaffPage() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <h1 className="text-xl font-bold text-headline">職員一覧</h1>
           <div className="flex items-center gap-3">
             <span className="text-sm text-paragraph/60">{filteredStaff.length}名</span>
@@ -250,15 +250,15 @@ export default function StaffPage() {
       />
 
       {loading && (
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-2 text-sm text-paragraph/60">読み込み中...</div>
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-2 text-sm text-paragraph/60">読み込み中...</div>
       )}
       {fetchError && (
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-2 text-sm text-red-600">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-2 text-sm text-red-600">
           スタッフ取得エラー: {fetchError}（ローカルデータを表示中）
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4">
         <div className="flex gap-3">
           <div className="flex-1 relative">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-paragraph/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -305,7 +305,7 @@ export default function StaffPage() {
         </div>
       </div>
 
-      <main className="max-w-4xl mx-auto px-3 sm:px-6 pb-8">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 pb-8">
         {viewMode === 'list' ? (
           <div className="space-y-4">
             {groupedByRole.map(({ role, staff }) => (

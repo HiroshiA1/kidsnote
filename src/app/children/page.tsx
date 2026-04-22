@@ -342,7 +342,7 @@ export default function ChildrenPage() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-headline">園児一覧</h1>
             <p className="text-xs text-paragraph/50">{fiscalYear}年度</p>
@@ -378,7 +378,7 @@ export default function ChildrenPage() {
       />
 
       {/* 検索・フィルター・表示切替 */}
-      <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 space-y-3">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 space-y-3">
         {/* 検索 */}
         <div className="flex gap-3">
           <div className="flex-1 relative">
@@ -496,7 +496,7 @@ export default function ChildrenPage() {
       </div>
 
       {/* 園児リスト */}
-      <main className="max-w-4xl mx-auto px-3 sm:px-6 pb-8">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 pb-8">
         {viewMode === 'class-group' ? (
           <div className="space-y-6">
             {groupedByClass.map(gradeGroup => (
@@ -515,7 +515,7 @@ export default function ChildrenPage() {
                           {cls.children.length}名
                         </span>
                       </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                         {cls.children.map(child => (
                           <ChildCard key={child.id} child={child} fiscalYear={fiscalYear} allChildren={allChildren} />
                         ))}

@@ -83,7 +83,7 @@ export default function HandoverRecordsPage() {
         </div>
       </RecordPageHeader>
 
-      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-6">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 py-6 space-y-6">
         <PendingSection
           pendingMessages={pendingMessages}
           confirmMessage={confirmMessage}
