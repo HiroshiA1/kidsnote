@@ -89,4 +89,9 @@ export interface InputMessage {
   ruleAnswer?: { answer: string; referencedRuleIds: string[] };
   /** 送信時に🚨トグルONだった入力。AI分類は保持しつつFloatingPopupで incident としてpre-selectされ、確定時に intent=incident/severity=high に強制される */
   isEmergency?: boolean;
+  /**
+   * 緊急モードで intent=incident に上書きされる前のAI分類結果。監査・検証用途。
+   * 非緊急メッセージでは undefined のまま。
+   */
+  originalResult?: IntentResult;
 }

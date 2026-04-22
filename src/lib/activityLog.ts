@@ -5,7 +5,11 @@ export type ActivityType =
   | 'classify_confirm'
   | 'classify_edit'
   | 'classify_cancel'
-  | 'rule_chat';
+  | 'rule_chat'
+  | 'ai_delete_child_blocked'
+  | 'ai_delete_child_confirmed'
+  | 'ai_delete_child_cancelled'
+  | 'ai_add_rule_saved';
 
 export interface ClassifyPayload {
   inputText: string;
@@ -34,12 +38,36 @@ export interface RuleChatPayload {
   referencedRuleIds?: string[];
 }
 
+/** AI起動の園児削除に関する監査用ペイロード */
+export interface AiDeleteChildPayload {
+  sourceMessageId: string;
+  /** 原文に含まれていた削除語(監査用) */
+  matchedKeyword?: string;
+  /** 原文由来で一致した候補数 */
+  candidateCount: number;
+  /** 操作したユーザーのロール */
+  role: string | null;
+  /** 確定時は対象園児ID、ブロック/キャンセル時は undefined */
+  targetChildId?: string;
+  /** ブロック理由(blocked時のみ) */
+  reason?: string;
+}
+
+export interface AiAddRuleSavedPayload {
+  sourceMessageId: string;
+  ruleId: string;
+  ruleTitle: string;
+  category: string;
+}
+
 export type ActivityPayload =
   | ClassifyPayload
   | ConfirmPayload
   | EditPayload
   | CancelPayload
-  | RuleChatPayload;
+  | RuleChatPayload
+  | AiDeleteChildPayload
+  | AiAddRuleSavedPayload;
 
 export interface ActivityLog {
   id: string;

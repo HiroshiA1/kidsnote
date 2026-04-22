@@ -64,9 +64,13 @@ export function ConfirmDialogContainer({ pending, onResolve }: ConfirmDialogCont
   const [typedInput, setTypedInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // openConfirm を呼ぶ直前にフォーカスしていた要素。閉じた後に戻す
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (pending) {
+      previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
       setTypedInput('');
       setTimeout(() => {
         if (pending.options.typedConfirm) {
@@ -75,13 +79,37 @@ export function ConfirmDialogContainer({ pending, onResolve }: ConfirmDialogCont
           cancelRef.current?.focus();
         }
       }, 0);
+    } else if (previouslyFocusedRef.current) {
+      // 閉じた直後にフォーカスを元の要素に戻す(a11y)
+      previouslyFocusedRef.current.focus?.();
+      previouslyFocusedRef.current = null;
     }
   }, [pending]);
 
   useEffect(() => {
     if (!pending) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onResolve(false);
+      if (e.key === 'Escape') {
+        onResolve(false);
+        return;
+      }
+      // Tab フォーカストラップ: ダイアログ外へ出さない
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])',
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        } else if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -105,6 +133,7 @@ export function ConfirmDialogContainer({ pending, onResolve }: ConfirmDialogCont
       onClick={() => onResolve(false)}
     >
       <div
+        ref={dialogRef}
         className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6"
         onClick={e => e.stopPropagation()}
       >

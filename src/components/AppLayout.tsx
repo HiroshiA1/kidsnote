@@ -417,6 +417,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
               };
               addRule(newRule);
               confirmMessage(pendingAiRule.sourceMessageId);
+              recordActivity('ai_add_rule_saved', {
+                sourceMessageId: pendingAiRule.sourceMessageId,
+                ruleId: newRule.id,
+                ruleTitle: newRule.title,
+                category: newRule.category,
+              });
               addToast({ type: 'success', message: `ルール「${newRule.title}」を追加しました` });
               setPendingAiRule(null);
             }}

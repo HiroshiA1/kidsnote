@@ -193,7 +193,9 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
         {/* 緊急モードインジケーター */}
         {emergencyMode && (
           <div className="flex items-center justify-center gap-2 mb-2 py-2 px-4 bg-alert/15 border border-alert/40 rounded-full">
-            <span className="text-lg">🚨</span>
+            <svg className="w-5 h-5 text-alert" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
             <span className="text-sm font-medium text-alert">緊急モード: ヒヤリハット(重要度:高)として確認画面に出ます</span>
           </div>
         )}
@@ -345,21 +347,23 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
             disabled={isProcessing}
           />
 
-          {/* 緊急モードトグル (🚨) */}
+          {/* 緊急モードトグル */}
           <button
             type="button"
             onClick={() => setEmergencyMode(v => !v)}
             disabled={isProcessing}
             aria-pressed={emergencyMode}
             aria-label={emergencyMode ? '緊急ヒヤリハットモードを解除' : '緊急ヒヤリハットモードを有効化'}
-            className={`flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-xl transition-all ${
+            className={`flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition-all ${
               emergencyMode
                 ? 'bg-alert text-white ring-2 ring-alert/40'
-                : 'bg-secondary/30 hover:bg-secondary/50'
+                : 'bg-secondary/30 text-alert hover:bg-secondary/50'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
             title={emergencyMode ? '緊急モード解除' : '緊急(ヒヤリハット)として送信'}
           >
-            🚨
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
           </button>
 
           {/* 音声入力ボタン */}

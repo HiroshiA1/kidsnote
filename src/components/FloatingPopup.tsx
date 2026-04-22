@@ -8,6 +8,7 @@ import { hasDeleteChildKeyword } from '@/lib/constants/deleteKeywords';
 import { hasMinRole } from '@/lib/supabase/auth';
 import { AddRuleData, DeleteChildData, InputMessage } from '@/types/intent';
 import { BASIC_RULE_CATEGORIES } from '@/types/rule';
+import { recordActivity } from '@/lib/activityLog';
 
 interface FloatingPopupProps {
   sidebarCollapsed: boolean;
@@ -68,11 +69,21 @@ export function FloatingPopup(_props: FloatingPopupProps) {
       : null;
 
   const handleDeleteChildAction = async (msg: InputMessage) => {
+    const data = msg.result?.data as DeleteChildData | undefined;
+    const matchedKeyword = data?.matched_keyword;
+    const candidateCount = deleteCandidates.length;
     // 二重ガード: 原文の削除語を再検証
     if (!hasDeleteChildKeyword(msg.content)) {
       addToast({
         type: 'error',
         message: 'AIが削除と判定しましたが、原文に明示的な削除語がないため中止しました',
+      });
+      recordActivity('ai_delete_child_blocked', {
+        sourceMessageId: msg.id,
+        matchedKeyword,
+        candidateCount,
+        role: currentUserRole,
+        reason: 'no_explicit_keyword_in_raw_text',
       });
       cancelMessage(msg.id);
       return;
@@ -83,14 +94,27 @@ export function FloatingPopup(_props: FloatingPopupProps) {
         type: 'error',
         message: '園児の削除は管理者・主任のみ実行できます。管理者にご依頼ください。',
       });
+      recordActivity('ai_delete_child_blocked', {
+        sourceMessageId: msg.id,
+        matchedKeyword,
+        candidateCount,
+        role: currentUserRole,
+        reason: 'insufficient_role',
+      });
       return;
     }
     // 対象特定
     if (deleteCandidates.length === 0) {
-      const data = msg.result?.data as DeleteChildData | undefined;
       addToast({
         type: 'error',
         message: `「${data?.target_name ?? '不明'}」に一致する園児が見つかりません。フルネームやクラスで指定してください。`,
+      });
+      recordActivity('ai_delete_child_blocked', {
+        sourceMessageId: msg.id,
+        matchedKeyword,
+        candidateCount,
+        role: currentUserRole,
+        reason: 'no_matching_child',
       });
       return;
     }
@@ -120,7 +144,22 @@ export function FloatingPopup(_props: FloatingPopupProps) {
       removeChild(target.id);
       confirmMessage(msg.id);
       addToast({ type: 'success', message: `${name} さん(${target.className})を削除しました` });
+      recordActivity('ai_delete_child_confirmed', {
+        sourceMessageId: msg.id,
+        matchedKeyword,
+        candidateCount,
+        role: currentUserRole,
+        targetChildId: target.id,
+      });
       setSelectedCandidateId(null);
+    } else {
+      recordActivity('ai_delete_child_cancelled', {
+        sourceMessageId: msg.id,
+        matchedKeyword,
+        candidateCount,
+        role: currentUserRole,
+        targetChildId: target.id,
+      });
     }
   };
 
@@ -161,6 +200,17 @@ export function FloatingPopup(_props: FloatingPopupProps) {
   };
 
   const handleCancel = () => {
+    // delete_child の最初のポップアップでキャンセルされたケースも監査ログに残す
+    if (current.result?.intent === 'delete_child') {
+      const data = current.result.data as DeleteChildData | undefined;
+      recordActivity('ai_delete_child_cancelled', {
+        sourceMessageId: current.id,
+        matchedKeyword: data?.matched_keyword,
+        candidateCount: deleteCandidates.length,
+        role: currentUserRole,
+        targetChildId: resolvedDeleteTarget?.id,
+      });
+    }
     cancelMessage(current.id);
     setSelectedCandidateId(null);
   };
@@ -184,7 +234,11 @@ export function FloatingPopup(_props: FloatingPopupProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-paragraph/10">
           <div className="flex items-center gap-2">
-            {isEmergency ? <span className="text-lg">🚨</span> : config && <span className="text-lg">{config.icon}</span>}
+            {isEmergency ? (
+              <svg className="w-5 h-5 text-alert" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            ) : config && <span className="text-lg">{config.icon}</span>}
             <span className="font-medium text-headline text-sm">
               {isEmergency ? '緊急ヒヤリハット (重要度:高)' : (config?.label ?? '処理中...')}
             </span>
@@ -291,9 +345,14 @@ export function FloatingPopup(_props: FloatingPopupProps) {
                   isEmergency || isDeleteChild ? 'bg-alert' : 'bg-button'
                 }`}
               >
-                {isEmergency
-                  ? '🚨 緊急登録する'
-                  : isDeleteChild
+                {isEmergency ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    緊急登録する
+                  </span>
+                ) : isDeleteChild
                   ? '対象を確認して削除へ'
                   : isAddRule
                   ? '内容を確認して保存'

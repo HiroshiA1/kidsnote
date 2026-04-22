@@ -237,15 +237,26 @@ export function useMessageController({
         },
         confidence: 1,
       };
+      // 元のAI分類結果を originalResult に退避(監査・検証用途)
+      const originalResult = message.result;
       setMessages(prev =>
-        prev.map(msg => (msg.id === messageId ? { ...msg, result: incidentResult, status: 'saved' } : msg)),
+        prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, result: incidentResult, originalResult, status: 'saved' }
+            : msg,
+        ),
       );
       recordActivity('classify_confirm', { messageId, emergency: true });
       recordAudit({
         event_type: 'message.confirm',
         target_type: 'message',
         target_id: messageId,
-        payload: { intent: 'incident', emergency: true },
+        payload: {
+          intent: 'incident',
+          emergency: true,
+          original_intent: originalResult.intent,
+          original_confidence: originalResult.confidence,
+        },
       });
       return;
     }
