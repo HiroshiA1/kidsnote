@@ -1,7 +1,7 @@
 'use client';
 
 import { useApp } from './AppLayout';
-import { IntentResult, GrowthData, IncidentData, HandoverData, ChildUpdateData, AddChildData, AddStaffData, RuleQueryData } from '@/types/intent';
+import { IntentResult, GrowthData, IncidentData, HandoverData, ChildUpdateData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData } from '@/types/intent';
 import { ChildLinks } from './ChildLink';
 import { severityLabels, severityColors, genderLabels, fieldLabels } from '@/lib/formatters';
 
@@ -184,6 +184,35 @@ function RuleQueryContent({ data, ruleAnswer, compact }: { data: RuleQueryData; 
   );
 }
 
+function DeleteChildContent({ data, compact }: { data: DeleteChildData; compact: boolean }) {
+  const textCls = compact ? 'text-xs' : 'text-sm';
+  return (
+    <div className={`${textCls} space-y-1`}>
+      <p className="font-medium text-alert">AIが削除対象と判定: {data.target_name}</p>
+      {data.class_hint && <p className="text-paragraph/70">クラス手がかり: {data.class_hint}</p>}
+      {data.matched_keyword && (
+        <p className="text-paragraph/50 text-[11px]">原文で検出: 「{data.matched_keyword}」</p>
+      )}
+      <p className="text-paragraph/60 text-[11px]">
+        確定前に対象園児を特定し、園児情報ページと同じ確認ダイアログを表示します。
+      </p>
+    </div>
+  );
+}
+
+function AddRuleContent({ data, compact }: { data: AddRuleData; compact: boolean }) {
+  const textCls = compact ? 'text-xs' : 'text-sm';
+  return (
+    <div className={`${textCls} space-y-1`}>
+      <p className="font-medium text-headline">{data.title || '(タイトル未設定)'}</p>
+      <p className="text-paragraph/70 whitespace-pre-wrap line-clamp-4">{data.content}</p>
+      <p className="text-paragraph/50 text-[11px]">
+        カテゴリ: {data.category || 'other'} / 確定ボタンで編集モーダルが開きます
+      </p>
+    </div>
+  );
+}
+
 export function IntentContentRenderer({ result, mode, linkedChildIds, ruleAnswer }: IntentContentRendererProps) {
   const compact = mode === 'compact';
 
@@ -202,5 +231,9 @@ export function IntentContentRenderer({ result, mode, linkedChildIds, ruleAnswer
       return <AddStaffContent data={result.data as AddStaffData} compact={compact} />;
     case 'rule_query':
       return <RuleQueryContent data={result.data as RuleQueryData} ruleAnswer={ruleAnswer} compact={compact} />;
+    case 'delete_child':
+      return <DeleteChildContent data={result.data as DeleteChildData} compact={compact} />;
+    case 'add_rule':
+      return <AddRuleContent data={result.data as AddRuleData} compact={compact} />;
   }
 }

@@ -85,6 +85,26 @@ export const intentConfig: Record<IntentType, IntentConfigItem> = {
     cardBg: 'bg-button/5',
     href: '/rules',
   },
+  delete_child: {
+    label: '園児削除',
+    icon: '🗑️',
+    color: 'text-alert',
+    bgColor: 'bg-alert/10',
+    borderColor: 'border-alert/60',
+    actionLabel: '対象を確認',
+    cardBg: 'bg-alert/5',
+    href: '/children',
+  },
+  add_rule: {
+    label: 'ルール追加',
+    icon: '📘',
+    color: 'text-headline',
+    bgColor: 'bg-tertiary/20',
+    borderColor: 'border-tertiary',
+    actionLabel: '内容を確認して保存',
+    cardBg: 'bg-tertiary/10',
+    href: '/rules',
+  },
 };
 
 /** ダッシュボードで表示する記録タイプ */

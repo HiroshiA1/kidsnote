@@ -90,13 +90,28 @@ export function useMessageController({
         classifyText,
         collectChildEntries(),
         collectExtraNames(),
+        text, // 破壊的操作ガード用の原文(前置コンテキストなし)
       );
       resultForLog = result ?? undefined;
 
-      // selectedChildIdがある場合、matchedChildIdsにマージ
+      // 表示用: selectedChildIdがある場合、matchedChildIdsにマージ
       const linkedChildIds = selectedChildId && !matchedChildIds.includes(selectedChildId)
         ? [selectedChildId, ...matchedChildIds]
         : matchedChildIds;
+      // 破壊的操作の対象一意化用: サーバー返却の matchedChildIds を
+      // 「原文(text)に名前が実際に含まれる」条件で再フィルタする。
+      // これにより、selectedChild のコンテキスト前置経由で混入したIDを排除する。
+      const aiMatchedChildIds = matchedChildIds.filter(id => {
+        const c = childrenData.find(child => child.id === id);
+        if (!c) return false;
+        const nameVariants = [
+          c.firstName, c.lastName,
+          c.firstNameKanji, c.lastNameKanji,
+          `${c.lastName}${c.firstName}`.trim(),
+          `${c.lastNameKanji ?? ''}${c.firstNameKanji ?? ''}`.trim(),
+        ].filter((n): n is string => !!n && n.length >= 2);
+        return nameVariants.some(n => text.includes(n));
+      });
 
       if (result?.intent === 'rule_query') {
         const rulesContext = rules.map(r => ({
@@ -117,7 +132,7 @@ export function useMessageController({
           setMessages(prev =>
             prev.map(msg =>
               msg.id === newMessage.id
-                ? { ...msg, result, status: 'confirmed', linkedChildIds, ruleAnswer: ruleResult }
+                ? { ...msg, result, status: 'confirmed', linkedChildIds, aiMatchedChildIds, ruleAnswer: ruleResult }
                 : msg
             )
           );
@@ -130,6 +145,7 @@ export function useMessageController({
                   result,
                   status: 'confirmed',
                   linkedChildIds,
+                  aiMatchedChildIds,
                   ruleAnswer: { answer: 'エラーが発生しました。もう一度お試しください。', referencedRuleIds: [] },
                 }
                 : msg
@@ -139,13 +155,21 @@ export function useMessageController({
       } else {
         const hasSafetyHit = SAFETY_KEYWORDS.some(kw => text.includes(kw));
         const isHighConfidence = result?.confidence !== undefined && result.confidence >= 0.9;
-        // 緊急モードは必ず教諭の目視確認を経るため autoSave をスキップ
-        const shouldAutoSave = isHighConfidence && !hasSafetyHit && !isEmergency && result?.intent !== 'add_child' && result?.intent !== 'add_staff';
+        const isDestructiveIntent = result?.intent === 'delete_child';
+        // 緊急モード・破壊的intentは必ず教諭の目視確認を経るため autoSave をスキップ
+        const shouldAutoSave =
+          isHighConfidence &&
+          !hasSafetyHit &&
+          !isEmergency &&
+          !isDestructiveIntent &&
+          result?.intent !== 'add_child' &&
+          result?.intent !== 'add_staff' &&
+          result?.intent !== 'add_rule';
 
         setMessages(prev =>
           prev.map(msg =>
             msg.id === newMessage.id
-              ? { ...msg, result, status: shouldAutoSave ? 'saved' : 'confirmed', linkedChildIds }
+              ? { ...msg, result, status: shouldAutoSave ? 'saved' : 'confirmed', linkedChildIds, aiMatchedChildIds }
               : msg
           )
         );

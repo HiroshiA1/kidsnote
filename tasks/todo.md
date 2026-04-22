@@ -101,3 +101,26 @@
 - ConfirmDialog の完全な focus trap、フォーカス復帰、ダイアログキュー化
 - 🚨トグルを SVG アイコン化(絵文字はiPadのフォント差による視認差を回避)
 - 長押し確定、ダークモード、xl/2xl レスポンシブ、Sidebar右配置、オフライン、パンくず
+
+---
+
+# AIチャットからアプリ内操作 Phase 2a (2026-04-22)
+
+## 実装済み (A1最小)
+- `delete_child` (園児削除): 三層ガード(Gemini prompt + 原文キーワード再検証 + UI再検証) + admin|manager 認可 + 候補選択UI + openConfirm(typed confirm + 影響範囲)
+- `add_rule` (ルール追加): AI提案を RuleModal で編集可能、保存時に addRule + confirmMessage
+- Gemini prompt 拡張、preClassify 厳格化(削除語+対象語 併存)、confidence cap、catch節フォールバック修正
+- InputMessage に `aiMatchedChildIds` 追加(原文由来のみ、破壊的操作用)
+- IntentContentRenderer に delete_child / add_rule 描画
+
+## Phase 2b TODO (今回のCodex指摘反映)
+- AI起動削除の audit/activity 拡張: `ai_delete_child_confirmed/cancelled/blocked`, `sourceMessageId`, `matchedKeyword`, `candidateCount`, `role` を残す
+- FloatingPopup から delete_child / add_rule の処理を専用hook/コンポーネントへ切り出し(責務分離)
+- add_rule キャンセル時の UX 明示化(「保留」「破棄」を明示、モーダル閉じても popup が再開するため)
+- `DELETE_CHILD_KEYWORDS` の「消す」を対象語との近接判定に改善(現在は「園児/名簿/退園/除籍/さん等」文脈要求で代用)
+
+## Phase 2a 拡張候補
+- `delete_rule`, `update_rule` (ルール削除/編集)
+- `add_calendar_event`, `delete_calendar_event` (予定CRUD)
+- `update_child` (一般情報の更新)
+- 職員CRUD

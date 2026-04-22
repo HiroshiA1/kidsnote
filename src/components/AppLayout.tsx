@@ -18,6 +18,7 @@ import { AppRole } from '@/lib/supabase/auth';
 import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit';
 import { ToastContainer, useToast, ToastMessage } from './Toast';
 import { ConfirmDialogContainer, useConfirm, ConfirmOptions } from './ConfirmDialog';
+import { RuleModal, RuleSavePayload } from './RuleModal';
 import { recordActivity } from '@/lib/activityLog';
 import { useHydration } from '@/hooks/useHydration';
 import { useMessageController } from '@/hooks/useMessageController';
@@ -83,6 +84,9 @@ interface AppContextType {
   currentUserRole: AppRole | null;
   addToast: (toast: Omit<ToastMessage, 'id'>) => string;
   openConfirm: (options: ConfirmOptions) => Promise<boolean>;
+  /** AI提案ルールの編集モーダルを開くためのstate(FloatingPopupがセット、AppLayoutがレンダリング) */
+  pendingAiRule: { sourceMessageId: string; draft: Partial<Rule> } | null;
+  setPendingAiRule: (value: { sourceMessageId: string; draft: Partial<Rule> } | null) => void;
   calendarEvents: CalendarEvent[];
   addCalendarEvent: (event: CalendarEvent) => void;
   updateCalendarEvent: (event: CalendarEvent) => void;
@@ -199,6 +203,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [ruleChatMessages, setRuleChatMessages] = useState<RuleChatMessage[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+  const [pendingAiRule, setPendingAiRule] = useState<{ sourceMessageId: string; draft: Partial<Rule> } | null>(null);
 
   const addChildToStore = (child: ChildWithGrowth) => {
     setChildrenData(prev => [...prev, child]);
@@ -341,6 +346,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         currentUserRole,
         addToast,
         openConfirm,
+        pendingAiRule,
+        setPendingAiRule,
         calendarEvents,
         addCalendarEvent,
         updateCalendarEvent,
@@ -395,6 +402,27 @@ export function AppLayout({ children }: { children: ReactNode }) {
         {!isLoginPage && <FloatingPopup sidebarCollapsed={sidebarCollapsed} />}
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         <ConfirmDialogContainer pending={confirmPending} onResolve={resolveConfirm} />
+        {pendingAiRule && (
+          <RuleModal
+            rule={pendingAiRule.draft}
+            aiSuggested
+            onSave={(payload: RuleSavePayload) => {
+              const newRule: Rule = {
+                id: `rule-${Date.now()}`,
+                title: payload.title,
+                content: payload.content,
+                category: payload.category,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              };
+              addRule(newRule);
+              confirmMessage(pendingAiRule.sourceMessageId);
+              addToast({ type: 'success', message: `ルール「${newRule.title}」を追加しました` });
+              setPendingAiRule(null);
+            }}
+            onClose={() => setPendingAiRule(null)}
+          />
+        )}
         {!isLoginPage && <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} selectedChildName={selectedChildId ? (() => { const c = childrenData.find(ch => ch.id === selectedChildId); return c ? `${c.lastNameKanji || c.lastName} ${c.firstNameKanji || c.firstName}`.trim() : null; })() : null} onError={(msg) => addToast({ type: 'error', message: msg })} />}
       </div>
     </AppContext.Provider>

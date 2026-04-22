@@ -1,45 +1,60 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { IntentResult, IntentType, GrowthData, AddChildData, AddStaffData, RuleQueryData } from '@/types/intent';
+import { IntentResult, IntentType, GrowthData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData } from '@/types/intent';
 import { SAFETY_KEYWORDS } from './safetyKeywords';
+import { DELETE_CHILD_KEYWORDS } from './constants/deleteKeywords';
 import { anonymizeText, deanonymizeResult, type AnonymizeResult, type ChildEntry } from './anonymize';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援AIです。
-保育士からの入力テキストを分析し、以下の7つのカテゴリのいずれかに分類してください。
+保育士からの入力テキストを分析し、以下の9つのカテゴリのいずれかに分類してください。
 
 ## 分類の優先順位（重要：この順番で判定してください）
 
-### 1. add_child（園児追加）- 最優先で判定
+### 1. delete_child（園児削除）- 最優先で慎重判定
+**極めて慎重に判定すること。誤起動すると取り返しがつかない。**
+以下の**明示的な削除語が原文に含まれる場合のみ** delete_child:
+- 「削除」「消して」「消す」「消去」「退園」「除籍」
+- かつ 対象園児名が特定できること
+「取り消し」「キャンセル」は削除と混同されやすいので delete_child とはしない。
+該当する削除語がなければ絶対に delete_child と分類してはならない。
+
+### 2. add_rule（ルール追加）
+園に新しいルールを追加する意図:
+- 「新しいルール」「ルールを追加」「規則を決めた」「〜を決まりにする」
+- 「今後〜する」「これから〜に変える」（明示的な方針転換）
+既存ルールへの質問(rule_query)とは区別すること。
+
+### 3. add_child（園児追加）
 以下のキーワードが含まれる場合は必ず add_child:
 - 「入園」「新入園」「入園しました」「入園します」
 - 「新しい園児」「新しく来た」「転園してきた」
 - 「〜組に入りました」（クラス配属の文脈で）
 - 「登録」「追加」（園児の文脈で）
 
-### 2. add_staff（職員追加）
+### 4. add_staff（職員追加）
 以下のキーワードが含まれる場合は add_staff:
 - 「入職」「新任」「着任」「赴任」
 - 「新しい先生」「新しい職員」
 - 「〜先生が来ました」「配属されました」
 
-### 3. rule_query（ルール質問）
+### 5. rule_query（ルール質問）
 園のルール・規則・マニュアル・手順についての質問
 - 「ルール」「規則」「決まり」「対応方法」「マニュアル」「手順」等のキーワード
 - 「〜はどうすればいい？」「〜の時はどうする？」「〜の対応は？」等の質問形式
 - 「〜を教えて」「〜について知りたい」（ルール・手順に関するもの）
 
-### 4. incident（ヒヤリハット）
+### 6. incident（ヒヤリハット）
 怪我・事故・危険な出来事・ヒヤリとした場面
 
-### 5. child_update（園児情報更新）
+### 7. child_update（園児情報更新）
 既存園児のアレルギー情報の変更・特性の追加など
 ※「入園」を含まない、既存園児の情報更新のみ
 
-### 6. handover（申し送り）
+### 8. handover（申し送り）
 保護者からの連絡・職員間の伝達事項・お迎え変更など
 
-### 7. growth（成長記録）
+### 9. growth（成長記録）
 園児の成長・発達・できたこと・日常の様子
 ※上記のどれにも該当しない場合
 
@@ -66,6 +81,12 @@ const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援A
 
 ルール質問の場合:
 {"intent":"rule_query","data":{"question":"質問内容"},"confidence":0.95}
+
+園児削除の場合（原文に削除語が明示されている場合のみ）:
+{"intent":"delete_child","data":{"target_name":"園児名","class_hint":"クラス名や年齢(任意)","matched_keyword":"削除/消して/退園 など原文で検出した語"},"confidence":0.6}
+
+ルール追加の場合:
+{"intent":"add_rule","data":{"title":"ルールのタイトル","content":"ルール本文","category":"safety/health/parents/daily_life/allergy/emergency/other のいずれか","related_rule_ids":[]},"confidence":0.8}
 
 ## その他のルール
 - 園児名・職員名は「〜くん」「〜ちゃん」「〜さん」「〜先生」を除いた名前のみ抽出
@@ -174,13 +195,54 @@ function convertToIntent(text: string, intent: IntentType, originalResult: Inten
     return { intent: 'rule_query', data, confidence: 0.9 };
   }
 
+  if (intent === 'delete_child') {
+    const name = extractName(text);
+    const className = extractClassName(text);
+    const matchedKeyword = DELETE_CHILD_KEYWORDS.find(kw => text.includes(kw));
+    const data: DeleteChildData = {
+      target_name: name,
+      class_hint: className,
+      matched_keyword: matchedKeyword,
+    };
+    // 破壊的操作は confidence を低めに固定し autoSave 経路を絶対に通さない
+    return { intent: 'delete_child', data, confidence: 0.6 };
+  }
+
+  if (intent === 'add_rule') {
+    // AI本体が title/content/category を構造化する。フォールバックとして原文を content に入れる
+    const data: AddRuleData = {
+      title: text.slice(0, 30),
+      content: text,
+      category: 'other',
+      related_rule_ids: [],
+    };
+    return { intent: 'add_rule', data, confidence: 0.7 };
+  }
+
   // その他の場合は元のデータを使用
   return { ...originalResult, intent };
 }
 
+/** ルール追加のキーワード(rule_query と区別するため明確な追加意図のみ) */
+const ADD_RULE_KEYWORDS = ['新しいルール', 'ルールを追加', '規則を追加', '規則を決め', 'ルールを決め', '今後', 'これから', '決まりにする', '決まりに追加'];
+
+/** delete_child の pre-classify に要求する対象語(誤分類防止のため、単純な削除語だけでは発火させない) */
+const DELETE_CHILD_CONTEXT_WORDS = ['園児', '名簿', '退園', '除籍', 'さん', 'ちゃん', 'くん'];
+
 // キーワードベースの事前判定（AIより優先）
 function preClassifyByKeyword(text: string): IntentType | null {
-  const lowerText = text.toLowerCase();
+  // 園児削除: 明示削除語 AND 対象を示唆する語(園児/名簿/退園/除籍/さん・ちゃん・くん)の併存
+  // 「記録を消す」「メモを消す」「予定を削除」など日常語との誤マッチを防ぐ
+  const hasDeleteKw = DELETE_CHILD_KEYWORDS.some(kw => text.includes(kw));
+  const hasContextKw = DELETE_CHILD_CONTEXT_WORDS.some(kw => text.includes(kw));
+  if (hasDeleteKw && hasContextKw) {
+    return 'delete_child';
+  }
+
+  // ルール追加のキーワード (rule_query より先に判定)
+  if (ADD_RULE_KEYWORDS.some(kw => text.includes(kw))) {
+    return 'add_rule';
+  }
 
   // 園児追加のキーワード
   const addChildKeywords = ['入園', '新入園', '転園してき', '新しい園児', '園児を追加', '園児登録'];
@@ -221,9 +283,12 @@ export async function classifyIntent(
   text: string,
   children: ChildEntry[] = [],
   extraNames: string[] = [],
+  /** AIに送る text がコンテキスト前置を含む場合、破壊的操作のガード判定には純粋な原文のみを使う */
+  rawTextForGuard?: string,
 ): Promise<ClassifyResult> {
-  // キーワードベースの事前判定
-  const preClassified = preClassifyByKeyword(text);
+  // キーワード事前判定は(前置コンテキストを含まない)原文に対して実施する
+  const guardText = rawTextForGuard ?? text;
+  const preClassified = preClassifyByKeyword(guardText);
 
   // 匿名化: 園児名を仮名に置換してからAPIに送信 + 園児ID特定
   let anonymization: AnonymizeResult = {
@@ -261,6 +326,25 @@ export async function classifyIntent(
       throw new Error('Invalid intent structure');
     }
 
+    // ── 破壊的操作の二重ガード ────────────────────────
+    // AI が delete_child と返しても、原文(前置コンテキスト除外)に明示削除語+文脈語が
+    // 無ければ信用しない。preClassifyByKeyword と同じ基準を適用する。
+    if (parsed.intent === 'delete_child') {
+      const hasDeleteKw = DELETE_CHILD_KEYWORDS.some(kw => guardText.includes(kw));
+      const hasContextKw = DELETE_CHILD_CONTEXT_WORDS.some(kw => guardText.includes(kw));
+      if (!hasDeleteKw || !hasContextKw) {
+        // 誤分類と判断 — growth にフォールバック(名前なし削除文の false positive 表示を防ぐ)
+        parsed = {
+          intent: 'growth',
+          data: { child_names: [], summary: text, tags: [] } as GrowthData,
+          confidence: 0,
+        };
+      } else {
+        // confidence は 0.7 を超えないように圧縮(autoSave閾値 0.9 に決して到達しないため)
+        parsed = { ...parsed, confidence: Math.min(parsed.confidence ?? 0.6, 0.7) };
+      }
+    }
+
     // キーワード事前判定がある場合はintentを上書きし、データも変換
     if (preClassified && parsed.intent !== preClassified) {
       return {
@@ -275,9 +359,12 @@ export async function classifyIntent(
     };
   } catch (error) {
     console.error('Gemini API error:', error);
+    // preClassified が何であっても、data 形状が GrowthData しか組み立てられない以上、
+    // intent と data の整合性を守るため常に growth にフォールバックする。
+    // (delete_child/add_rule/add_child/add_staff などの誤intentを残すと後段UIが壊れる)
     return {
       intent: {
-        intent: preClassified || 'growth',
+        intent: 'growth',
         data: {
           child_names: [],
           summary: text,
@@ -296,7 +383,7 @@ function isValidIntent(result: unknown): result is IntentResult {
   const r = result as Record<string, unknown>;
   if (!r.intent || !r.data) return false;
 
-  const validIntents: IntentType[] = ['growth', 'incident', 'handover', 'child_update', 'add_child', 'add_staff', 'rule_query'];
+  const validIntents: IntentType[] = ['growth', 'incident', 'handover', 'child_update', 'add_child', 'add_staff', 'rule_query', 'delete_child', 'add_rule'];
   if (!validIntents.includes(r.intent as IntentType)) return false;
 
   return true;

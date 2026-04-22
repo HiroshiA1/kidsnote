@@ -11,6 +11,12 @@ export async function classifyInputAction(
   text: string,
   children: ChildEntry[] = [],
   extraNames: string[] = [],
+  /**
+   * 破壊的操作のガード判定に使う原文(前置コンテキストを含まない)。
+   * text にコンテキスト前置がある場合、keyword判定は rawTextForGuard に対して行う。
+   * 未指定なら text をそのまま使用(従来互換)。
+   */
+  rawTextForGuard?: string,
 ): Promise<ClassifyResult> {
   // ── レート制限 ────────────────────────────────────────
   const headersList = await headers();
@@ -20,7 +26,8 @@ export async function classifyInputAction(
 
   // ── 入力バリデーション ────────────────────────────────
   const validated = validateChatMessage(text);
+  const validatedGuard = rawTextForGuard ? validateChatMessage(rawTextForGuard) : undefined;
 
   // ── 処理（匿名化＋園児特定付き） ──────────────────────
-  return classifyIntent(validated, children, extraNames);
+  return classifyIntent(validated, children, extraNames, validatedGuard);
 }

@@ -1,5 +1,14 @@
 export type RuleCategory = string;
 
+/**
+ * RuleModal / FloatingPopup / rules/page で共通に扱う基本カテゴリ配列。
+ * AI提案のカテゴリ正規化・selectbox 選択肢・フィルタ選択肢で使用し、
+ * 値が分散して不整合になることを防ぐ。
+ */
+export const BASIC_RULE_CATEGORIES: RuleCategory[] = [
+  'safety', 'health', 'parents', 'daily_life', 'allergy', 'emergency', 'other',
+];
+
 export interface Rule {
   id: string;
   title: string;
