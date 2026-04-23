@@ -379,12 +379,13 @@ export default function ConsiderationsPage() {
         consideration: Consideration;
     } | null>(null);
 
-    // クラス一覧
+    // クラス一覧 — 退園済み園児は含めない
     const classes = useMemo(() => {
-        return [...new Set(childrenData.map(c => c.className))].sort();
+        return [...new Set(childrenData.filter(c => !c.archivedAt).map(c => c.className))].sort();
     }, [childrenData]);
 
-    // 各 childId → child のマップ
+    // 各 childId → child のマップ(過去の consideration で archived 園児が紐付いていても
+    // 名前解決できるよう、マップ自体は archived 含む全園児を保持)
     const childMap = useMemo(() => {
         const m = new Map<string, ChildWithGrowth>();
         childrenData.forEach(c => m.set(c.id, c));

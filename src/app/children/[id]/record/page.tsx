@@ -37,6 +37,28 @@ export default function RecordPage() {
     );
   }
 
+  // 退園済み園児は詳細ページ側で既に案内済み。記録編集への直接URLアクセスは遮断する
+  if (child.archivedAt) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="bg-surface rounded-lg border border-alert/40 p-6 text-center max-w-md space-y-3">
+          <p className="text-headline font-medium">この園児は退園(アーカイブ)済みです</p>
+          <p className="text-sm text-paragraph/80">
+            成長記録の編集は在園中の園児のみ可能です。
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Link href={`/children/${child.id}`} className="text-sm text-button hover:underline">
+              園児詳細へ
+            </Link>
+            <Link href="/children/archived" className="text-sm text-button hover:underline">
+              アーカイブ一覧へ
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const childName = `${child.lastNameKanji || child.lastName} ${child.firstNameKanji || child.firstName}`;
   const evaluations = child.growthEvaluations || [];
   const selectedPeriod = DEFAULT_PERIODS[selectedPeriodIdx];

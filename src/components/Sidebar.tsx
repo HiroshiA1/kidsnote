@@ -141,8 +141,8 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
-    // /children は /children/considerations にマッチさせない
-    if (href === '/children') return pathname === '/children' || (pathname.startsWith('/children/') && !pathname.startsWith('/children/considerations'));
+    // /children は /children/considerations および /children/archived にマッチさせない
+    if (href === '/children') return pathname === '/children' || (pathname.startsWith('/children/') && !pathname.startsWith('/children/considerations') && !pathname.startsWith('/children/archived'));
     return pathname.startsWith(href);
   };
 

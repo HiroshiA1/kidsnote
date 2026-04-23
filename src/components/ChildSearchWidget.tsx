@@ -18,12 +18,14 @@ export function ChildSearchWidget({ children, selectedChildId, onSelect }: Child
   const selectedChild = selectedChildId ? children.find(c => c.id === selectedChildId) : null;
 
   const filtered = query.trim()
-    ? children.filter(c => {
-        const q = query.trim();
-        return [c.firstName, c.lastName, c.firstNameKanji, c.lastNameKanji, c.className]
-          .filter(Boolean)
-          .some(name => name!.includes(q));
-      }).slice(0, 10)
+    ? children
+        .filter(c => !c.archivedAt) // 退園済みは AI選択対象から除外
+        .filter(c => {
+          const q = query.trim();
+          return [c.firstName, c.lastName, c.firstNameKanji, c.lastNameKanji, c.className]
+            .filter(Boolean)
+            .some(name => name!.includes(q));
+        }).slice(0, 10)
     : [];
 
   useEffect(() => {

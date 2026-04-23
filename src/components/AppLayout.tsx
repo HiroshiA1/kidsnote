@@ -56,7 +56,12 @@ interface AppContextType {
   staff: Staff[];
   addChild: (child: ChildWithGrowth) => void;
   updateChild: (child: ChildWithGrowth) => void;
+  /** 物理削除(復元不可)。管理者のみ。通常操作は archiveChild を推奨 */
   removeChild: (id: string) => void;
+  /** 退園(ソフト削除)。archivedAt をセット、復元可能 */
+  archiveChild: (id: string, reason?: string) => void;
+  /** 退園取消(復元)。archivedAt をクリア */
+  restoreChild: (id: string) => void;
   fiscalYear: number;
   setFiscalYear: (y: number) => void;
   addStaff: (staff: Staff) => void;
@@ -222,9 +227,35 @@ export function AppLayout({ children }: { children: ReactNode }) {
     auditUpdate('child', child.id, { name: `${child.lastName} ${child.firstName}` });
   };
 
+  /** 物理削除(復元不可)。管理者のみ使用を想定、通常は archiveChild を使う */
   const removeChildFromStore = (id: string) => {
     setChildrenData(prev => prev.filter(c => c.id !== id));
     auditDelete('child', id);
+  };
+
+  /** 退園(アーカイブ)。archivedAt をセットするだけでデータ自体は保持 */
+  const archiveChild = (id: string, reason?: string) => {
+    setChildrenData(prev =>
+      prev.map(c =>
+        c.id === id ? { ...c, archivedAt: new Date(), archiveReason: reason, updatedAt: new Date() } : c,
+      ),
+    );
+    auditUpdate('child', id, { action: 'archive', reason: reason ?? null });
+  };
+
+  /** 復元(退園取消)。archivedAt を消す */
+  const restoreChild = (id: string) => {
+    setChildrenData(prev =>
+      prev.map(c => {
+        if (c.id !== id) return c;
+        // undefined を入れるとオブジェクトに残るため、copy から外す
+        const { archivedAt: _archivedAt, archiveReason: _reason, ...rest } = c;
+        void _archivedAt;
+        void _reason;
+        return { ...rest, updatedAt: new Date() } as ChildWithGrowth;
+      }),
+    );
+    auditUpdate('child', id, { action: 'restore' });
   };
 
   const addStaffToStore = (staff: Staff) => {
@@ -323,6 +354,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         addChild: addChildToStore,
         updateChild: updateChildInStore,
         removeChild: removeChildFromStore,
+        archiveChild,
+        restoreChild,
         fiscalYear,
         setFiscalYear,
         addStaff: addStaffToStore,

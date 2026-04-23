@@ -195,8 +195,9 @@ export default function DocumentsPage() {
     setShowApprovalModal(null);
   };
 
-  // クラス別にグループ化（指導要録用）
-  const childrenByClass = children.reduce<Record<string, typeof children>>((acc, child) => {
+  // クラス別にグループ化（指導要録用）— 退園済み園児は通常業務から外す
+  const activeChildren = children.filter(c => !c.archivedAt);
+  const childrenByClass = activeChildren.reduce<Record<string, typeof activeChildren>>((acc, child) => {
     const cn = child.className;
     if (!acc[cn]) acc[cn] = [];
     acc[cn].push(child);

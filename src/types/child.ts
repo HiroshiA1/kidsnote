@@ -77,6 +77,10 @@ export interface Child {
   photoUrl?: string;
   createdAt: Date;
   updatedAt: Date;
+  /** 退園(アーカイブ)された日時。null/undefined なら在園中。物理削除ではなくソフト削除で復元可能 */
+  archivedAt?: Date;
+  /** 退園理由(任意、監査・復元時の参考) */
+  archiveReason?: string;
 }
 
 export interface GrowthLevel {

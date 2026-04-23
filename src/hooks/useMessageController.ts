@@ -47,15 +47,18 @@ export function useMessageController({
   const [isProcessing, setIsProcessing] = useState(false);
 
   const collectChildEntries = useCallback((): ChildEntry[] =>
-    childrenData.map(c => ({
-      id: c.id,
-      names: [
-        c.firstName, c.lastName,
-        c.firstNameKanji, c.lastNameKanji,
-        `${c.lastName}${c.firstName}`.trim(),
-        `${c.lastNameKanji ?? ''}${c.firstNameKanji ?? ''}`.trim(),
-      ].filter((n): n is string => !!n && n.length >= 2),
-    })), [childrenData]);
+    // AI マッチ対象は在園中の園児のみ。退園(archivedAt あり)園児は新規記録の紐付け対象から外す
+    childrenData
+      .filter(c => !c.archivedAt)
+      .map(c => ({
+        id: c.id,
+        names: [
+          c.firstName, c.lastName,
+          c.firstNameKanji, c.lastNameKanji,
+          `${c.lastName}${c.firstName}`.trim(),
+          `${c.lastNameKanji ?? ''}${c.firstNameKanji ?? ''}`.trim(),
+        ].filter((n): n is string => !!n && n.length >= 2),
+      })), [childrenData]);
 
   const collectExtraNames = useCallback((): string[] => {
     const names: string[] = [];

@@ -372,7 +372,7 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
                   <button
                     type="button"
                     onClick={() => {
-                      const classKids = childrenData.filter(c => c.classId === childClassFilter).map(c => c.id);
+                      const classKids = childrenData.filter(c => !c.archivedAt && c.classId === childClassFilter).map(c => c.id);
                       const cur = new Set(form.targetChildIds ?? []);
                       classKids.forEach(id => cur.add(id));
                       set('targetChildIds', Array.from(cur));
@@ -385,6 +385,7 @@ export function CalendarEventModal({ open, onClose, initialDate, initialStartTim
               </div>
               <div className="max-h-32 overflow-y-auto border border-secondary/30 rounded-md p-2 space-y-1">
                 {childrenData
+                  .filter(c => !c.archivedAt) // 退園済みは行事対象から外す
                   .filter(c => childClassFilter === 'all' || c.classId === childClassFilter)
                   .map(c => {
                     const checked = form.targetChildIds?.includes(c.id) ?? false;

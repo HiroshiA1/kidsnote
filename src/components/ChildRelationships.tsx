@@ -15,6 +15,8 @@ interface ChildRelationshipsProps {
   child: ChildWithGrowth;
   allChildren: ChildWithGrowth[];
   onUpdate: (relationships: ChildRelationship[]) => void;
+  /** true の場合、閲覧のみで追加/編集/削除の導線を隠す(退園済み園児などで使用) */
+  readOnly?: boolean;
 }
 
 /** 園児選択コンボボックス */
@@ -209,8 +211,9 @@ function RelationshipCard({
 }: {
   rel: ChildRelationship;
   allChildren: ChildWithGrowth[];
-  onEdit: () => void;
-  onDelete: () => void;
+  /** 未指定ならアクションボタン非表示(閲覧のみ) */
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const target = allChildren.find(c => c.id === rel.targetChildId);
   const colors = peerRelationColors[rel.type];
@@ -247,34 +250,40 @@ function RelationshipCard({
           )}
         </div>
 
-        {/* アクション */}
-        <div className="flex gap-1 flex-shrink-0">
-          <button
-            onClick={onEdit}
-            className="p-1.5 rounded-lg hover:bg-white/60 transition-colors text-paragraph/40 hover:text-paragraph"
-            title="編集"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </button>
-          <button
-            onClick={onDelete}
-            className="p-1.5 rounded-lg hover:bg-white/60 transition-colors text-paragraph/40 hover:text-alert"
-            title="削除"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
-        </div>
+        {/* アクション(閲覧のみなら非表示) */}
+        {(onEdit || onDelete) && (
+          <div className="flex gap-1 flex-shrink-0">
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                className="p-1.5 rounded-lg hover:bg-white/60 transition-colors text-paragraph/40 hover:text-paragraph"
+                title="編集"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                className="p-1.5 rounded-lg hover:bg-white/60 transition-colors text-paragraph/40 hover:text-alert"
+                title="削除"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 /** 友達関係セクション */
-export function ChildRelationships({ child, allChildren, onUpdate }: ChildRelationshipsProps) {
+export function ChildRelationships({ child, allChildren, onUpdate, readOnly = false }: ChildRelationshipsProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -310,7 +319,7 @@ export function ChildRelationships({ child, allChildren, onUpdate }: ChildRelati
     <section className="bg-surface rounded-xl p-6 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-headline">友達関係</h3>
-        {!showForm && !editingId && (
+        {!readOnly && !showForm && !editingId && (
           <button
             onClick={() => setShowForm(true)}
             className="px-3 py-1.5 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1.5"
@@ -324,7 +333,7 @@ export function ChildRelationships({ child, allChildren, onUpdate }: ChildRelati
       </div>
 
       {/* 追加フォーム */}
-      {showForm && (
+      {!readOnly && showForm && (
         <div className="mb-4">
           <RelationshipForm
             allChildren={allChildren}
@@ -339,7 +348,7 @@ export function ChildRelationships({ child, allChildren, onUpdate }: ChildRelati
       {sortedRels.length > 0 ? (
         <div className="space-y-3">
           {sortedRels.map(rel =>
-            editingId === rel.id ? (
+            !readOnly && editingId === rel.id ? (
               <RelationshipForm
                 key={rel.id}
                 allChildren={allChildren}
@@ -353,21 +362,25 @@ export function ChildRelationships({ child, allChildren, onUpdate }: ChildRelati
                 key={rel.id}
                 rel={rel}
                 allChildren={allChildren}
-                onEdit={() => setEditingId(rel.id)}
-                onDelete={() => handleDelete(rel.id)}
+                onEdit={readOnly ? undefined : () => setEditingId(rel.id)}
+                onDelete={readOnly ? undefined : () => handleDelete(rel.id)}
               />
             )
           )}
         </div>
       ) : !showForm ? (
         <div className="text-center py-8">
-          <p className="text-sm text-paragraph/50 mb-3">まだ友達関係が登録されていません</p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="text-sm text-button hover:underline"
-          >
-            友達関係を追加する
-          </button>
+          <p className="text-sm text-paragraph/50 mb-3">
+            {readOnly ? '友達関係は登録されていませんでした' : 'まだ友達関係が登録されていません'}
+          </p>
+          {!readOnly && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="text-sm text-button hover:underline"
+            >
+              友達関係を追加する
+            </button>
+          )}
         </div>
       ) : null}
     </section>

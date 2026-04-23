@@ -9,6 +9,7 @@ import { ChildWithGrowth } from '@/lib/childrenStore';
 import ChildCreateModal from '@/components/ChildCreateModal';
 import ChildCsvImportModal from '@/components/ChildCsvImportModal';
 import { getAgeInFiscalYear, getGradeInFiscalYear, isEnrolledInFiscalYear } from '@/lib/fiscalYear';
+import { countChildActivity } from '@/lib/childActivityCount';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import { GrowthCategoryId, GrowthEvaluation } from '@/types/growth';
 import { growthCategories } from '@/lib/constants/growthCategories';
@@ -193,15 +194,15 @@ function ChildListItem({ child, fiscalYear, onDelete }: { child: ChildWithGrowth
             </span>
           </div>
 
-          {/* 削除ボタン (destructive: 48×48) */}
+          {/* 退園(アーカイブ)ボタン。物理削除ではなくソフト削除で復元可能 */}
           <button
             onClick={handleDeleteClick}
-            className="w-12 h-12 flex items-center justify-center text-paragraph/40 hover:text-alert hover:bg-alert/10 rounded-lg transition-colors flex-shrink-0"
-            title={`${child.lastName} ${child.firstName} を削除`}
-            aria-label={`${child.lastName} ${child.firstName} を削除`}
+            className="w-12 h-12 flex items-center justify-center text-paragraph/40 hover:text-button hover:bg-button/10 rounded-lg transition-colors flex-shrink-0"
+            title={`${child.lastName} ${child.firstName} を退園(アーカイブ)`}
+            aria-label={`${child.lastName} ${child.firstName} を退園(アーカイブ)`}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
             </svg>
           </button>
 
@@ -216,10 +217,10 @@ function ChildListItem({ child, fiscalYear, onDelete }: { child: ChildWithGrowth
 }
 
 export default function ChildrenPage() {
-  const { children: allChildren, addChild, removeChild, fiscalYear, openConfirm, messages, attendance } = useApp();
-  // 選択年度に在園している園児のみを対象にする
+  const { children: allChildren, addChild, archiveChild, fiscalYear, openConfirm, messages, attendance } = useApp();
+  // 選択年度に在園していて、かつ退園(archivedAt)されていない園児のみを対象にする
   const childrenData = useMemo(
-    () => allChildren.filter((c) => isEnrolledInFiscalYear(c.birthDate, fiscalYear)),
+    () => allChildren.filter((c) => !c.archivedAt && isEnrolledInFiscalYear(c.birthDate, fiscalYear)),
     [allChildren, fiscalYear],
   );
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -228,37 +229,19 @@ export default function ChildrenPage() {
 
   const handleDelete = async (child: ChildWithGrowth) => {
     const name = `${child.lastNameKanji || child.lastName} ${child.firstNameKanji || child.firstName}`.trim();
-    const nameVariants = [
-      child.firstName, child.lastName,
-      child.firstNameKanji, child.lastNameKanji,
-      `${child.lastName}${child.firstName}`.trim(),
-      `${child.lastNameKanji ?? ''}${child.firstNameKanji ?? ''}`.trim(),
-    ].filter((n): n is string => !!n && n.length >= 2);
-    // 成長記録: linkedChildIds直接 + 名前フォールバック(古い記録用) + 事前集計評価
-    const growthByLinked = messages.filter(
-      m => m.status === 'saved' && m.result?.intent === 'growth' && m.linkedChildIds?.includes(child.id),
-    ).length;
-    const growthByNameOnly = messages.filter(
-      m =>
-        m.status === 'saved' &&
-        m.result?.intent === 'growth' &&
-        !m.linkedChildIds?.includes(child.id) &&
-        nameVariants.some(n => m.content.includes(n)),
-    ).length;
-    const growthCount = growthByLinked + growthByNameOnly + (child.growthEvaluations?.length ?? 0);
-    const attendanceCount = attendance.filter(a => a.childId === child.id).length;
+    const { growthCount, attendanceCount } = countChildActivity(child, messages, attendance);
+    // 退園(ソフト削除)。復元可能なので typed confirm は不要
     const confirmed = await openConfirm({
-      title: `${name} さんを削除します`,
-      message: '園児情報のみ削除されます。関連する成長記録・出欠記録は残ります(Phase 2で退園処理に切り替え予定)。',
-      type: 'danger',
+      title: `${name} さんを退園します`,
+      message: 'アーカイブに移動され、一覧から非表示になります。関連する成長記録・出欠は保持されます。管理 > アーカイブ から復元・完全削除できます。',
+      type: 'info',
       influenceScope: [
         { label: '関連する成長記録', count: growthCount },
         { label: '関連する出欠記録', count: attendanceCount, unit: '日分' },
       ],
-      typedConfirm: { keyword: '削除' },
-      confirmLabel: '削除する',
+      confirmLabel: '退園する',
     });
-    if (confirmed) removeChild(child.id);
+    if (confirmed) archiveChild(child.id);
   };
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');

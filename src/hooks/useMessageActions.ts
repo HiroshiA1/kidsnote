@@ -8,6 +8,7 @@ import { AddCalendarEventData, AddRuleData, DeleteChildData, DeleteRuleData, Inp
 import { BASIC_RULE_CATEGORIES, Rule } from '@/types/rule';
 import { recordActivity } from '@/lib/activityLog';
 import { ChildWithGrowth } from '@/lib/childrenStore';
+import { countChildActivity } from '@/lib/childActivityCount';
 
 /**
  * AIメッセージ確定/キャンセル時の副作用を集約したフック。
@@ -28,7 +29,7 @@ export function useMessageActions() {
     cancelMessage,
     children: childrenData,
     attendance,
-    removeChild,
+    archiveChild,
     openConfirm,
     addToast,
     setPendingAiRule,
@@ -116,25 +117,22 @@ export function useMessageActions() {
         return;
       }
       const name = `${target.lastNameKanji || target.lastName} ${target.firstNameKanji || target.firstName}`.trim();
-      const growthCount = messages.filter(
-        m2 => m2.status === 'saved' && m2.result?.intent === 'growth' && m2.linkedChildIds?.includes(target.id),
-      ).length;
-      const attendanceCount = attendance.filter(a => a.childId === target.id).length;
+      const { growthCount, attendanceCount } = countChildActivity(target, messages, attendance);
+      // AI 経由の「削除」は退園(アーカイブ)として扱う。復元可能なので typed confirm 不要
       const confirmed = await openConfirm({
-        title: `${name} さんを削除します`,
-        message: `クラス: ${target.className}\n園児情報のみ削除されます。関連する成長記録・出欠記録は残ります(Phase 2で退園処理に切り替え予定)。`,
-        type: 'danger',
+        title: `${name} さんを退園します`,
+        message: `クラス: ${target.className}\nアーカイブに移動され、一覧から非表示になります。関連する成長記録・出欠は保持されます。\n「管理 > アーカイブ」から復元・完全削除できます。`,
+        type: 'info',
         influenceScope: [
           { label: '関連する成長記録', count: growthCount },
           { label: '関連する出欠記録', count: attendanceCount, unit: '日分' },
         ],
-        typedConfirm: { keyword: '削除' },
-        confirmLabel: '削除する',
+        confirmLabel: '退園する',
       });
       if (confirmed) {
-        removeChild(target.id);
+        archiveChild(target.id);
         confirmMessage(msg.id);
-        addToast({ type: 'success', message: `${name} さん(${target.className})を削除しました` });
+        addToast({ type: 'success', message: `${name} さん(${target.className})を退園しました(アーカイブから復元可)` });
         recordActivity('ai_delete_child_confirmed', {
           sourceMessageId: msg.id,
           matchedKeyword,
@@ -163,7 +161,7 @@ export function useMessageActions() {
       messages,
       attendance,
       openConfirm,
-      removeChild,
+      archiveChild,
       resolveDeleteTarget,
     ],
   );
