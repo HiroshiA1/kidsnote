@@ -135,9 +135,12 @@ function CollapsibleSection({
 
 export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
-  const { currentUserRole, fiscalYear, setFiscalYear, settings } = useApp();
+  const { currentUserRole, fiscalYear, setFiscalYear, settings, sidebarPosition } = useApp();
   const hiddenItems = settings.menuVisibility?.hiddenItems ?? [];
   const yearOptions = getFiscalYearOptions();
+  // モバイルの drawer は常に左から出す (Codex 合意: 利き手切替は md+ の固定レイアウトのみ)
+  // md+ で sidebarPosition='right' のときだけ右端に固定し直す
+  const isRight = sidebarPosition === 'right';
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -163,10 +166,12 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
         />
       )}
       <aside
-        className={`fixed left-0 top-0 h-full bg-surface border-r border-secondary/20 flex flex-col z-40 transition-all duration-300
+        className={`fixed top-0 h-full bg-surface border-secondary/20 flex flex-col z-40 transition-all duration-300
           ${isCollapsed ? 'w-16' : 'w-64'}
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
           md:translate-x-0 md:z-20
+          left-0 ${isRight ? 'md:left-auto md:right-0' : ''}
+          border-r ${isRight ? 'md:border-r-0 md:border-l' : ''}
         `}
       >
       {/* ヘッダー */}

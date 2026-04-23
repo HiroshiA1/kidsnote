@@ -66,6 +66,8 @@ export default function ArchivedChildrenPage() {
         { label: '関連する出欠記録', count: attendanceCount, unit: '日分' },
       ],
       typedConfirm: { keyword: '削除' },
+      // 不可逆削除は typed confirm に加え、pointer デバイス経由では 1秒長押しで最終確定
+      longPress: { durationMs: 1000 },
       confirmLabel: '完全削除する',
     });
     if (confirmed) {

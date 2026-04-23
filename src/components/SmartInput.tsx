@@ -15,11 +15,13 @@ interface SmartInputProps {
   isProcessing?: boolean;
   placeholder?: string;
   sidebarCollapsed?: boolean;
+  /** サイドバーが左/右どちらに固定されているか。md以上で下部入力バーの残りスペースを決める */
+  sidebarPosition?: 'left' | 'right';
   selectedChildName?: string | null;
   onError?: (message: string) => void;
 }
 
-export function SmartInput({ onSubmit, isProcessing = false, placeholder, sidebarCollapsed = false, selectedChildName, onError }: SmartInputProps) {
+export function SmartInput({ onSubmit, isProcessing = false, placeholder, sidebarCollapsed = false, sidebarPosition = 'left', selectedChildName, onError }: SmartInputProps) {
   const [input, setInput] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -188,7 +190,17 @@ export function SmartInput({ onSubmit, isProcessing = false, placeholder, sideba
   const displayText = input + (interimTranscript ? interimTranscript : '');
 
   return (
-    <div className={`fixed bottom-0 right-0 p-3 sm:p-4 bg-background border-t border-secondary/20 transition-all duration-300 left-0 ${sidebarCollapsed ? 'md:left-16' : 'md:left-64'}`}>
+    <div
+      className={`fixed bottom-0 left-0 right-0 p-3 sm:p-4 bg-background border-t border-secondary/20 transition-all duration-300 ${
+        sidebarPosition === 'right'
+          ? sidebarCollapsed
+            ? 'md:right-16'
+            : 'md:right-64'
+          : sidebarCollapsed
+            ? 'md:left-16'
+            : 'md:left-64'
+      }`}
+    >
       <div className="max-w-3xl mx-auto">
         {/* 緊急モードインジケーター */}
         {emergencyMode && (

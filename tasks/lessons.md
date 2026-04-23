@@ -66,6 +66,25 @@
 
 ---
 
+---
+
+## 2026-04-23 Codex レビューから(長押し確定)
+
+### L13: pointer 経由 click の抑止は preventDefault だけに頼るな
+**症状**: 長押しボタン実装で `onPointerDown` の `e.preventDefault()` により pointer 由来 click が発火しないことを前提にし、`onClick` の分岐は `(e.nativeEvent as PointerEvent).pointerType` のチェックのみ。MouseEvent として届くと pointerType は undefined になり、空文字チェックが常に真になって **pointer からの click が素通りして即確定する抜け穴** が発生。
+**教訓**: 「preventDefault が効く前提」は一部ブラウザで崩れる。pointer 起点の click を遮断するなら **pointerdown で suppress フラグを立て、click 側でそれを必ず消費する** 二重防御にする。keyboard/AT 経由は `e.detail === 0` で識別できる(観測可能な値に根拠を置く)。
+**予防策**: ref を `armSuppress → consume in click handler` のループで組み、「このイベントパスは何で識別できるか?」を常に問う。
+
+### L14: 長押しボタンで主ボタン判定を忘れない
+**症状**: `onPointerDown` で `e.button` / `e.isPrimary` を見ずにタイマーを走らせたため、右クリックや補助ボタン付きペン入力でも destructive 操作の長押しカウントが始まる設計抜け。
+**教訓**: pointer ハンドラでは **主ボタンのみ受理 (`e.button === 0 && e.isPrimary`)**。それ以外は preventDefault も呼ばず通常のブラウザ挙動(右クリックメニュー等)に委ねる。
+
+### L15: setPointerCapture は throw する可能性がある
+**症状**: `setPointerCapture()` を try/catch で握りつぶしていたため、capture 非対応の古い WebView では例外発生後に pointerLeave ハンドラがないと、ポインタがボタン外へ離脱してもタイマーが走り切って onConfirm() が起きる可能性があった。
+**教訓**: setPointerCapture 依存の設計では、**capture 失敗経路のフォールバック** (pointerleave 復活 / document レベル購読 等) を必ず残す。capture 成功時は pointerleave が発火しないため、フォールバックを残しても正常系 UX は損なわれない。
+
+---
+
 ## 活用ルール
 - セッション冒頭: 該当パターンに触れる作業があれば読み返す
 - コードレビュー時: L1〜L8 の形跡がないか目視チェック

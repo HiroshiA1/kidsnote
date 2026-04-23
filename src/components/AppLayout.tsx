@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, createContext, useContext, ReactNode } from 'react';
+import { useState, useCallback, useEffect, createContext, useContext, ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { SmartInput, Attachment } from './SmartInput';
@@ -43,6 +43,9 @@ export interface Staff {
   accountEmail?: string;
 }
 
+/** サイドバーの配置。利き手に応じて個人別に記憶する */
+export type SidebarPosition = 'left' | 'right';
+
 interface AppContextType {
   messages: InputMessage[];
   addMessage: (content: string, attachments?: Attachment[], options?: { emergency?: boolean }) => Promise<void>;
@@ -52,6 +55,9 @@ interface AppContextType {
   markForRecord: (id: string) => void;
   isProcessing: boolean;
   sidebarCollapsed: boolean;
+  /** サイドバーの配置 (左/右)。スタッフ別 localStorage に永続化 */
+  sidebarPosition: SidebarPosition;
+  setSidebarPosition: (pos: SidebarPosition) => void;
   children: ChildWithGrowth[];
   staff: Staff[];
   addChild: (child: ChildWithGrowth) => void;
@@ -212,6 +218,55 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // クライアント初回 render から正しい配置を出すため、pre-hydration script が設定した
+  // <html data-sidebar> を lazy init で読み取る。SSR 上は 'left' を返し、
+  // mismatch するのは保存済み右配置ユーザーのみ (pre-hydration script で data-sidebar は既に right)。
+  const [sidebarPosition, setSidebarPositionState] = useState<SidebarPosition>(() => {
+    if (typeof document === 'undefined') return 'left';
+    return document.documentElement.getAttribute('data-sidebar') === 'right' ? 'right' : 'left';
+  });
+
+  // スタッフ別キー。staffId が無い場合(未ログイン等)は共有キー 'default' を使う
+  const sidebarPositionKey = useCallback((staffId: string | null) => {
+    return `kidsnote:sidebar-position:${staffId ?? 'default'}`;
+  }, []);
+
+  // currentStaffId が変わるたび (= スタッフ切替) に保存値を読み直す。
+  // data-sidebar 属性も同期し、CSS/デバッグで位置を識別できるようにする。
+  // 失敗時も data-sidebar と state を揃える(stale な属性が残らないようにする)。
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let next: SidebarPosition = 'left';
+    try {
+      const raw = window.localStorage.getItem(sidebarPositionKey(currentStaffId));
+      if (raw === 'right') next = 'right';
+      else if (raw !== 'left') {
+        // staff 別キーが無いときのフォールバック
+        const fallback = window.localStorage.getItem(sidebarPositionKey(null));
+        if (fallback === 'right') next = 'right';
+      }
+    } catch {
+      next = 'left';
+    }
+    setSidebarPositionState(next);
+    document.documentElement.setAttribute('data-sidebar', next);
+  }, [currentStaffId, sidebarPositionKey]);
+
+  const setSidebarPosition = useCallback(
+    (pos: SidebarPosition) => {
+      setSidebarPositionState(pos);
+      try {
+        window.localStorage.setItem(sidebarPositionKey(currentStaffId), pos);
+      } catch {
+        // localStorage 失敗は UI 上は無視 (state 更新のみ)
+      }
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-sidebar', pos);
+      }
+    },
+    [currentStaffId, sidebarPositionKey],
+  );
+
   const [ruleChatMessages, setRuleChatMessages] = useState<RuleChatMessage[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [pendingAiRule, setPendingAiRule] = useState<{ sourceMessageId: string; draft: Partial<Rule>; updateTargetId?: string } | null>(null);
@@ -349,6 +404,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         markForRecord,
         isProcessing,
         sidebarCollapsed,
+        sidebarPosition,
+        setSidebarPosition,
         children: childrenData,
         staff: staffData,
         addChild: addChildToStore,
@@ -421,7 +478,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
             onMobileClose={() => setMobileSidebarOpen(false)}
           />
         )}
-        <main className={`flex-1 ${isLoginPage ? '' : 'pb-32'} transition-all duration-300 ${isLoginPage ? '' : sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+        <main
+          className={`flex-1 ${isLoginPage ? '' : 'pb-32'} transition-all duration-300 ${
+            isLoginPage
+              ? ''
+              : sidebarPosition === 'right'
+                ? sidebarCollapsed
+                  ? 'md:mr-16'
+                  : 'md:mr-64'
+                : sidebarCollapsed
+                  ? 'md:ml-16'
+                  : 'md:ml-64'
+          }`}
+        >
           {/* モバイルヘッダー（ハンバーガー） */}
           {!isLoginPage && (
             <div className="flex items-center gap-3 px-3 py-2 bg-surface border-b border-secondary/20 md:hidden">
@@ -442,7 +511,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           {!isLoginPage && <Breadcrumbs />}
           {children}
         </main>
-        {!isLoginPage && <FloatingPopup sidebarCollapsed={sidebarCollapsed} />}
+        {!isLoginPage && <FloatingPopup />}
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         <ConfirmDialogContainer pending={confirmPending} onResolve={resolveConfirm} />
         {pendingAiRule && (
@@ -531,7 +600,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             }}
           />
         )}
-        {!isLoginPage && <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} selectedChildName={selectedChildId ? (() => { const c = childrenData.find(ch => ch.id === selectedChildId); return c ? `${c.lastNameKanji || c.lastName} ${c.firstNameKanji || c.firstName}`.trim() : null; })() : null} onError={(msg) => addToast({ type: 'error', message: msg })} />}
+        {!isLoginPage && <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} sidebarPosition={sidebarPosition} selectedChildName={selectedChildId ? (() => { const c = childrenData.find(ch => ch.id === selectedChildId); return c ? `${c.lastNameKanji || c.lastName} ${c.firstNameKanji || c.firstName}`.trim() : null; })() : null} onError={(msg) => addToast({ type: 'error', message: msg })} />}
       </div>
     </AppContext.Provider>
   );

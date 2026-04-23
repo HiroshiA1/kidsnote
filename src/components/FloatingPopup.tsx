@@ -6,12 +6,12 @@ import { intentConfig } from '@/lib/constants/intentConfig';
 import { IntentContentRenderer } from './IntentContentRenderer';
 import { useMessageActions } from '@/hooks/useMessageActions';
 
-interface FloatingPopupProps {
-  sidebarCollapsed: boolean;
-}
-
-export function FloatingPopup(_props: FloatingPopupProps) {
-  const { messages, markForRecord } = useApp();
+/**
+ * AI判定フロートカード。画面右下(サイドバー左配置時) / 左下(右配置時) に表示して、
+ * サイドバーとタップ領域が被らないようにする。
+ */
+export function FloatingPopup() {
+  const { messages, markForRecord, sidebarPosition } = useApp();
   const {
     selectedCandidateId,
     setSelectedCandidateId,
@@ -77,7 +77,9 @@ export function FloatingPopup(_props: FloatingPopupProps) {
 
   return (
     <div
-      className="fixed bottom-24 z-30 w-96 max-w-[calc(100vw-2rem)] transition-all duration-300 right-3 sm:right-6"
+      className={`fixed bottom-24 z-30 w-96 max-w-[calc(100vw-2rem)] transition-all duration-300 ${
+        sidebarPosition === 'right' ? 'left-3 sm:left-6' : 'right-3 sm:right-6'
+      }`}
     >
       <div className={`rounded-xl shadow-lg border overflow-hidden ${
         isEmergency

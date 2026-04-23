@@ -31,17 +31,31 @@ export const metadata: Metadata = {
 };
 
 /**
- * ハイドレート前に localStorage からテーマ設定を読み取り、
- * <html> の data-theme 属性を設定することで初期描画の "flash" を回避する。
- * 値は 'light' | 'dark' | 'auto'(未設定扱い)
+ * ハイドレート前に localStorage からテーマ/サイドバー配置を読み取り、
+ * <html> の data-theme / data-sidebar 属性を設定することで初期描画の "flash" を回避する。
+ * - data-theme: 'light' | 'dark' | 'auto'(未設定扱い)
+ * - data-sidebar: 'left' | 'right'(未設定時は 'left' 相当)
+ *   サイドバー位置は現ログイン中スタッフ(kidsnote_current_staff_id)別に
+ *   'kidsnote:sidebar-position:${staffId}' で保存する設計。ログイン前は 'default' キー。
  */
-const themeInitScript = `
+const prefInitScript = `
 (function() {
   try {
     var t = localStorage.getItem('kidsnote:theme');
     if (t === 'light' || t === 'dark') {
       document.documentElement.setAttribute('data-theme', t);
     }
+    var sidRaw = localStorage.getItem('kidsnote_current_staff_id');
+    var sid = null;
+    if (sidRaw) {
+      try { sid = JSON.parse(sidRaw); } catch (_) { sid = null; }
+    }
+    var pos = null;
+    if (sid) pos = localStorage.getItem('kidsnote:sidebar-position:' + sid);
+    if (pos !== 'left' && pos !== 'right') {
+      pos = localStorage.getItem('kidsnote:sidebar-position:default');
+    }
+    document.documentElement.setAttribute('data-sidebar', pos === 'right' ? 'right' : 'left');
   } catch (_) {}
 })();
 `;
@@ -54,7 +68,7 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: prefInitScript }} />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}

@@ -9,6 +9,7 @@ import { ShiftPattern } from '@/types/staffAttendance';
 import { topNavItems, navSections } from '@/lib/constants/navigation';
 import { NewYearSetupWizard } from '@/components/settings/NewYearSetupWizard';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { SidebarPositionToggle } from '@/components/SidebarPositionToggle';
 
 type TabId = 'A' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N';
 
@@ -96,6 +97,9 @@ function SectionA({ settings, onUpdate }: { settings: SchoolSettings; onUpdate: 
       </div>
       <div className="pt-4 border-t border-secondary/30">
         <ThemeToggle />
+      </div>
+      <div className="pt-4 border-t border-secondary/30">
+        <SidebarPositionToggle />
       </div>
     </div>
   );
