@@ -120,7 +120,15 @@
 - `DELETE_CHILD_KEYWORDS` の「消す」を対象語との近接判定に改善(現在は「園児/名簿/退園/除籍/さん等」文脈要求で代用)
 
 ## Phase 2a 拡張候補
-- `delete_rule`, `update_rule` (ルール削除/編集)
-- `add_calendar_event`, `delete_calendar_event` (予定CRUD)
-- `update_child` (一般情報の更新)
+- [x] `delete_rule`, `update_rule` (ルール削除/編集) — Phase 2c で完了
+- [x] `add_calendar_event` — Phase 2c で完了
+- [ ] `delete_calendar_event` (予定削除)
+- [ ] `update_child` (一般情報の更新)
 - 職員CRUD
+  - [x] Supabase 一元化 (`useSupabaseStaff` + `staffMapper` + AppLayout 統合)
+  - [x] `POST /api/staff` 新規作成 (auth user + staff + membership 一括 + 補償)
+  - [x] `GET /api/staff` 一覧 + `has_account` + `myRole`
+  - [x] `PATCH /api/staff/[id]` プロフィール更新
+  - [x] `POST /api/staff/[id]/account` 既存スタッフへのアカウント後付け作成 (2026-04-26)
+  - [ ] スタッフ削除/無効化 API (設計議論待ち: auth user 削除 / membership 解除のみ / 退職フラグ)
+  - [ ] AI 経由 `add_staff` の再有効化 (現在は info toast で停止中案内)

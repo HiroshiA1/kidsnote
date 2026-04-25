@@ -103,8 +103,20 @@ function StaffEditModal({ staff, onSave, onClose, roleNames }: { staff: Staff; o
   );
 }
 
-/** アカウント作成モーダル */
-function AccountCreateModal({ staff, onCreated, onClose }: { staff: Staff; onCreated: (email: string) => void; onClose: () => void }) {
+/**
+ * アカウント作成モーダル。
+ * 親から `onSubmit(email, password)` を受け取り、成功すれば onClose する。失敗時はエラー文言をモーダル内に出す。
+ * (UI と API 呼び出しの責務を分け、モーダル自身は staffId を知らない)
+ */
+function AccountCreateModal({
+  staff,
+  onSubmit,
+  onClose,
+}: {
+  staff: Staff;
+  onSubmit: (email: string, password: string) => Promise<void>;
+  onClose: () => void;
+}) {
   const [email, setEmail] = useState(staff.email || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -139,13 +151,14 @@ function AccountCreateModal({ staff, onCreated, onClose }: { staff: Staff; onCre
     }
 
     setCreating(true);
-
-    // デモモードでは実際のSupabase呼び出しの代わりにシミュレーション
-    // 本番ではここで supabase.auth.admin.createUser() を呼ぶ
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    onCreated(email);
-    setCreating(false);
+    try {
+      await onSubmit(email, password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'アカウント作成に失敗しました');
+    } finally {
+      // L2: 例外発生時も creating フラグを必ず戻す
+      setCreating(false);
+    }
   };
 
   const inputClass = "w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm text-paragraph focus:outline-none focus:ring-2 focus:ring-button/30";
@@ -212,7 +225,7 @@ function AccountCreateModal({ staff, onCreated, onClose }: { staff: Staff; onCre
 
 export default function StaffDetailPage() {
   const params = useParams();
-  const { staff: staffData, updateStaff, currentUserRole, addToast, settings } = useApp();
+  const { staff: staffData, staffStatus, updateStaff, createStaffAccount, currentUserRole, addToast, settings } = useApp();
   const roleConfigs = settings.staffRoleConfigs ?? defaultStaffRoleConfigs;
   const roleNames = roleConfigs.map(r => r.name);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -220,6 +233,17 @@ export default function StaffDetailPage() {
 
   const staff = staffData.find(s => s.id === params.id);
   const isAdmin = hasMinRole(currentUserRole, 'manager');
+
+  // staff 取得完了前は not found を出さない (loading 中の誤判定防止)
+  if (staffStatus === 'loading' || staffStatus === 'unauthenticated') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-sm text-paragraph/60">
+          {staffStatus === 'loading' ? '読み込み中...' : 'ログインが必要です'}
+        </p>
+      </div>
+    );
+  }
 
   if (!staff) {
     return (
@@ -234,10 +258,15 @@ export default function StaffDetailPage() {
 
   const yearsOfService = calculateYearsOfService(staff.hireDate);
 
-  const handleAccountCreated = (email: string) => {
-    updateStaff({ ...staff, accountCreated: true, accountEmail: email });
+  /**
+   * モーダルからの submit を受け、POST /api/staff/[id]/account を呼ぶ。
+   * 成功時のみモーダルを閉じる (失敗時はモーダル内エラー表示を活かす)。
+   */
+  const handleAccountSubmit = async (email: string, password: string) => {
+    if (!staff) return;
+    await createStaffAccount(staff.id, email, password);
     setShowAccountModal(false);
-    addToast({ message: `${staff.lastName} ${staff.firstName}のアカウントを作成しました`, type: 'success' });
+    addToast({ type: 'success', message: `${staff.lastName} ${staff.firstName} のアカウントを作成しました` });
   };
 
   return (
@@ -266,10 +295,17 @@ export default function StaffDetailPage() {
         <StaffEditModal
           staff={staff}
           roleNames={roleNames}
-          onSave={(updated) => {
-            updateStaff(updated);
-            setShowEditModal(false);
-            addToast({ message: '職員情報を更新しました', type: 'success' });
+          onSave={async (updated) => {
+            try {
+              await updateStaff(updated);
+              setShowEditModal(false);
+              addToast({ message: '職員情報を更新しました', type: 'success' });
+            } catch (err) {
+              addToast({
+                type: 'error',
+                message: err instanceof Error ? err.message : '職員情報の更新に失敗しました',
+              });
+            }
           }}
           onClose={() => setShowEditModal(false)}
         />
@@ -278,7 +314,7 @@ export default function StaffDetailPage() {
       {showAccountModal && (
         <AccountCreateModal
           staff={staff}
-          onCreated={handleAccountCreated}
+          onSubmit={handleAccountSubmit}
           onClose={() => setShowAccountModal(false)}
         />
       )}
@@ -332,11 +368,11 @@ export default function StaffDetailPage() {
           )}
         </section>
 
-        {/* アカウント管理 */}
+        {/* アカウント管理 — hasAccount は memberships 存在で判定 (API join 経由、真偽値が実態と一致) */}
         <section className="bg-surface rounded-xl p-6 shadow-sm">
           <h3 className="text-lg font-bold text-headline mb-4">アカウント管理</h3>
 
-          {staff.accountCreated ? (
+          {staff.hasAccount ? (
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-4 bg-tertiary/10 border border-tertiary/30 rounded-xl">
                 <div className="w-10 h-10 bg-tertiary/20 rounded-full flex items-center justify-center">
@@ -346,23 +382,13 @@ export default function StaffDetailPage() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-headline">アカウント作成済み</p>
-                  <p className="text-xs text-paragraph/60">ログインメール: {staff.accountEmail || staff.email}</p>
+                  <p className="text-xs text-paragraph/60">ログインメール: {staff.email || '-'}</p>
                 </div>
               </div>
-
-              {isAdmin && (
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      updateStaff({ ...staff, accountCreated: false, accountEmail: undefined });
-                      addToast({ message: 'アカウントを無効化しました', type: 'info' });
-                    }}
-                    className="px-4 py-2 bg-alert/10 text-alert border border-alert/30 rounded-lg text-sm hover:bg-alert/20 transition-colors"
-                  >
-                    アカウント無効化
-                  </button>
-                </div>
-              )}
+              {/*
+                アカウント無効化は memberships 削除 + auth user 無効化の設計未確定のため一時停止。
+                DELETE /api/staff/[id] または別エンドポイント設計 (次フェーズ) で再導入する。
+              */}
             </div>
           ) : (
             <div className="space-y-4">
@@ -378,16 +404,18 @@ export default function StaffDetailPage() {
                 </div>
               </div>
 
-              {isAdmin && (
+              {isAdmin ? (
                 <button
+                  type="button"
                   onClick={() => setShowAccountModal(true)}
-                  className="px-4 py-2 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+                  className="w-full sm:w-auto px-4 py-2.5 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                  </svg>
                   アカウントを作成
                 </button>
+              ) : (
+                <p className="text-xs text-paragraph/60">
+                  アカウント作成は管理者のみ可能です。
+                </p>
               )}
             </div>
           )}

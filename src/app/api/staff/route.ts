@@ -146,7 +146,16 @@ export async function POST(request: Request) {
   return NextResponse.json({ success: true, staff: staffRow }, { status: 201 });
 }
 
-// ===== GET: 一覧取得（同一組織のスタッフ） =====
+// ===== GET: 一覧取得（同一組織のスタッフ + アカウント有無 + 自分のロール） =====
+// - アカウント有無 (has_account) は memberships 存在で判定する。
+//   memberships の RLS は「自分の行のみ select 可」「admin/manager のみ他人の行を管理可」
+//   であるため、teacher/part_time が request user 権限で `.in('staff_id', ...)` すると
+//   自分以外が常に false に化ける。これを避けるため、**admin client (service_role)** で
+//   **自組織の memberships に限定して** 引く(org 越えは起きない)。
+// - myRole は memberships.role を直接返し、UI 側 currentUserRole の唯一の出どころにする。
+//   staff.role (日本語) は表示専用で、権限判定には使わない。
+// - auth.users.email は RLS 越しに取れないため、ログイン用アドレスは staff.email と
+//   同一運用する前提。
 export async function GET() {
   const supabase = await createServerClient();
   const {
@@ -157,8 +166,20 @@ export async function GET() {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
   }
 
+  // ログイン中ユーザーの membership を取り、所属組織と自ロールを確定
+  const { data: myMembership, error: myMemberError } = await supabase
+    .from('memberships')
+    .select('organization_id, role, staff_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .single();
+
+  if (myMemberError || !myMembership) {
+    return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
+  }
+
   // RLS により自組織のみ取得される
-  const { data, error } = await supabase
+  const { data: staffRows, error } = await supabase
     .from('staff')
     .select('*')
     .order('created_at', { ascending: true });
@@ -166,6 +187,25 @@ export async function GET() {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  const rows = staffRows ?? [];
 
-  return NextResponse.json({ staff: data ?? [] });
+  // admin client で「自組織の memberships のみ」を取得して has_account を判定。
+  // RLS 依存だと teacher/part_time では他人の membership が見えず化けるため。
+  const admin = createAdminClient();
+  const { data: memRows, error: memError } = await admin
+    .from('memberships')
+    .select('staff_id')
+    .eq('organization_id', myMembership.organization_id)
+    .not('staff_id', 'is', null);
+
+  const staffIdsWithAccount = memError
+    ? new Set<string>()
+    : new Set<string>((memRows ?? []).map(m => m.staff_id as string));
+
+  return NextResponse.json({
+    staff: rows.map(r => ({ ...r, has_account: staffIdsWithAccount.has(r.id) })),
+    myRole: myMembership.role,
+    mySelfStaffId: myMembership.staff_id ?? null,
+    ...(memError ? { warning: `アカウント判定で警告: ${memError.message}` } : {}),
+  });
 }

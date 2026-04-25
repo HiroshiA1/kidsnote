@@ -9,14 +9,17 @@ import { sampleRules } from '@/lib/sampleRules';
 import { InputMessage } from '@/types/intent';
 import { AppRole } from '@/lib/supabase/auth';
 import { getCurrentFiscalYear } from '@/lib/fiscalYear';
-import type { Staff } from '@/components/AppLayout';
-import { initialStaff } from '@/lib/data/initialStaff';
 import { CalendarEvent, SupportAssignment, DEFAULT_CALENDAR_CATEGORIES } from '@/types/calendar';
 import { DEFAULT_RULE_CATEGORIES } from '@/types/rule';
 import { CurriculumPlan, DailyReflection, ChildDailyReflection } from '@/types/carePlan';
 import { NewYearSetup } from '@/types/newYearSetup';
 
-const staffRoleMap: Record<string, AppRole> = {
+/**
+ * 日本語 staff.role → Supabase app_role のマップ。
+ * 本格的には memberships.role を直接使うべきだが、現状はこのマップで代用。
+ * AppLayout 側の currentUserRole 導出でも使うので export する。
+ */
+export const staffRoleMap: Record<string, AppRole> = {
   '園長': 'admin',
   '主任': 'manager',
   '担任': 'teacher',
@@ -27,7 +30,8 @@ const staffRoleMap: Record<string, AppRole> = {
 export function useHydration() {
   const [messages, setMessages] = useState<InputMessage[]>([]);
   const [childrenData, setChildrenData] = useState<ChildWithGrowth[]>(initialChildren);
-  const [staffData, setStaffData] = useState<Staff[]>(initialStaff);
+  // staff は Supabase canonical に一元化したため、local hydration 対象から外す。
+  // AppLayout 側の useSupabaseStaff が取得を担う。
   const [rules, setRules] = useState<Rule[]>(sampleRules);
   const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
   const [settingsData, setSettingsData] = useState<SchoolSettings>(defaultSchoolSettings);
@@ -35,7 +39,7 @@ export function useHydration() {
   const [shiftAssignments, setShiftAssignments] = useState<ShiftAssignment[]>([]);
   const [staffAttendanceData, setStaffAttendanceData] = useState<StaffAttendanceRecord[]>([]);
   const [currentStaffId, setCurrentStaffId] = useState<string | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<AppRole | null>(null);
+  // currentUserRole は Supabase staff 取得後に AppLayout 側で導出する
   const [fiscalYear, setFiscalYear] = useState<number>(getCurrentFiscalYear());
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [supportAssignments, setSupportAssignments] = useState<SupportAssignment[]>([]);
@@ -48,17 +52,15 @@ export function useHydration() {
   // Hydrate from localStorage after mount
   useEffect(() => {
     const hydrateAsync = async () => {
-      const [loadedMessages, loadedChildren, loadedStaff, loadedAttendance, loadedStaffAttendance] = await Promise.all([
+      const [loadedMessages, loadedChildren, loadedAttendance, loadedStaffAttendance] = await Promise.all([
         loadFromStorageAsync<InputMessage[]>(STORAGE_KEYS.messages),
         loadFromStorageAsync<ChildWithGrowth[]>(STORAGE_KEYS.children),
-        loadFromStorageAsync<Staff[]>(STORAGE_KEYS.staff),
         loadFromStorageAsync<AttendanceRecord[]>(STORAGE_KEYS.attendance),
         loadFromStorageAsync<StaffAttendanceRecord[]>(STORAGE_KEYS.staffAttendance),
       ]);
 
       setMessages(loadedMessages ?? []);
       setChildrenData(loadedChildren ?? initialChildren);
-      setStaffData(loadedStaff ?? initialStaff);
       setAttendanceData(loadedAttendance ?? []);
       setStaffAttendanceData(loadedStaffAttendance ?? []);
 
@@ -76,14 +78,7 @@ export function useHydration() {
 
       const savedStaffId = loadFromStorage<string>(STORAGE_KEYS.currentStaffId) ?? null;
       setCurrentStaffId(savedStaffId);
-
-      const staffList = loadedStaff ?? initialStaff;
-      if (savedStaffId) {
-        const staff = staffList.find(s => s.id === savedStaffId);
-        if (staff) {
-          setCurrentUserRole(staffRoleMap[staff.role] ?? 'teacher');
-        }
-      }
+      // currentUserRole の導出は AppLayout 側で Supabase staff 取得後に行う
       const savedFy = loadFromStorage<number>(STORAGE_KEYS.fiscalYear);
       if (typeof savedFy === 'number') setFiscalYear(savedFy);
       setHydrated(true);
@@ -94,7 +89,7 @@ export function useHydration() {
   // Persist state changes to localStorage (only after hydration)
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.messages, messages); }, [messages, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.children, childrenData); }, [childrenData, hydrated]);
-  useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.staff, staffData); }, [staffData, hydrated]);
+  // staff は Supabase canonical のため localStorage には保存しない
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.rules, rules); }, [rules, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.attendance, attendanceData); }, [attendanceData, hydrated]);
   useEffect(() => { if (hydrated) saveToStorage(STORAGE_KEYS.settings, settingsData); }, [settingsData, hydrated]);
@@ -111,21 +106,12 @@ export function useHydration() {
   useEffect(() => {
     if (hydrated) {
       saveToStorage(STORAGE_KEYS.currentStaffId, currentStaffId);
-      if (currentStaffId) {
-        const staff = staffData.find(s => s.id === currentStaffId);
-        if (staff) {
-          setCurrentUserRole(staffRoleMap[staff.role] ?? 'teacher');
-        }
-      } else {
-        setCurrentUserRole(null);
-      }
     }
-  }, [currentStaffId, hydrated, staffData]);
+  }, [currentStaffId, hydrated]);
 
   return {
     messages, setMessages,
     childrenData, setChildrenData,
-    staffData, setStaffData,
     rules, setRules,
     attendanceData, setAttendanceData,
     settingsData, setSettingsData,
@@ -133,7 +119,6 @@ export function useHydration() {
     shiftAssignments, setShiftAssignments,
     staffAttendanceData, setStaffAttendanceData,
     currentStaffId, setCurrentStaffId,
-    currentUserRole,
     fiscalYear, setFiscalYear,
     calendarEvents, setCalendarEvents,
     supportAssignments, setSupportAssignments,

@@ -23,8 +23,9 @@ import { Breadcrumbs } from './Breadcrumbs';
 import { CalendarEventModal } from './CalendarEventModal';
 import { getJstDateString } from '@/lib/localDate';
 import { recordActivity } from '@/lib/activityLog';
-import { useHydration } from '@/hooks/useHydration';
+import { useHydration, staffRoleMap } from '@/hooks/useHydration';
 import { useMessageController } from '@/hooks/useMessageController';
+import { useSupabaseStaff } from '@/hooks/useSupabaseStaff';
 
 // 職員型
 export interface Staff {
@@ -37,11 +38,17 @@ export interface Staff {
   phone?: string;
   hireDate: Date;
   qualifications: string[];
-  /** ログイン用アカウントが作成済みか */
-  accountCreated?: boolean;
-  /** アカウントのメールアドレス（emailと同一の場合もある） */
-  accountEmail?: string;
+  /**
+   * ログイン用アカウント(Supabase auth user + memberships 行)の有無。
+   * API 側で memberships の存在 join で判定して返すので、UI 型では真実値に一致する。
+   * ※旧フィールド `accountCreated` / `accountEmail` は local 書き換えで嘘表示が起きていたため廃止。
+   *    アカウントのメールアドレスは `email` を ログインID と同一運用する前提で staff.email に寄せる。
+   */
+  hasAccount?: boolean;
 }
+
+/** staff データの取得状態。ログイン状態・Supabase 接続状況に応じて画面描画を分岐させるため Context に公開する */
+export type StaffStatus = 'loading' | 'ready' | 'error' | 'unauthenticated';
 
 /** サイドバーの配置。利き手に応じて個人別に記憶する */
 export type SidebarPosition = 'left' | 'right';
@@ -59,7 +66,16 @@ interface AppContextType {
   sidebarPosition: SidebarPosition;
   setSidebarPosition: (pos: SidebarPosition) => void;
   children: ChildWithGrowth[];
+  /**
+   * canonical staff リスト。Supabase が唯一の source of truth。
+   * loading / unauthenticated / error 時は空配列を返す(他画面での null チェック不要)。
+   * staff 画面自体は `staffStatus` を参照して loading/error/unauthenticated を描画分岐する。
+   */
   staff: Staff[];
+  /** staff 取得状態 */
+  staffStatus: StaffStatus;
+  /** staff 再取得 (StaffCreateModal 等、mutation 成功後に呼ぶ) */
+  refetchStaff: () => Promise<void>;
   addChild: (child: ChildWithGrowth) => void;
   updateChild: (child: ChildWithGrowth) => void;
   /** 物理削除(復元不可)。管理者のみ。通常操作は archiveChild を推奨 */
@@ -70,8 +86,16 @@ interface AppContextType {
   restoreChild: (id: string) => void;
   fiscalYear: number;
   setFiscalYear: (y: number) => void;
-  addStaff: (staff: Staff) => void;
-  updateStaff: (staff: Staff) => void;
+  /**
+   * PATCH /api/staff/[id] を呼び、成功時に local state を差し替える。
+   * 失敗時は例外を throw するので呼び出し側で toast 等を出す。
+   */
+  updateStaff: (staff: Staff) => Promise<void>;
+  /**
+   * 既存 staff に auth user + membership を後付けで作成する。
+   * 成功時に refetchStaff で hasAccount を最新化。失敗時は例外を throw。
+   */
+  createStaffAccount: (staffId: string, email: string, password: string) => Promise<void>;
   selectedChildId: string | null;
   setSelectedChildId: (id: string | null) => void;
   rules: Rule[];
@@ -145,7 +169,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const {
     messages, setMessages,
     childrenData, setChildrenData,
-    staffData, setStaffData,
     rules, setRules,
     attendanceData, setAttendanceData,
     settingsData, setSettingsData,
@@ -153,7 +176,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
     shiftAssignments, setShiftAssignments,
     staffAttendanceData, setStaffAttendanceData,
     currentStaffId, setCurrentStaffId,
-    currentUserRole,
     fiscalYear, setFiscalYear,
     calendarEvents, setCalendarEvents,
     supportAssignments, setSupportAssignments,
@@ -162,6 +184,30 @@ export function AppLayout({ children }: { children: ReactNode }) {
     childDailyReflections, setChildDailyReflections,
     newYearSetup, setNewYearSetup,
   } = useHydration();
+
+  // staff は Supabase canonical。画面は staffStatus で描画分岐する
+  const { staff: supabaseStaff, status: staffStatus, refetch: refetchStaff } = useSupabaseStaff();
+
+  // currentUserRole は Supabase staff 取得後に currentStaffId から導出する。
+  // currentStaffId が Supabase に存在しなければ null にクリアして stale 値を残さない。
+  const [currentUserRole, setCurrentUserRole] = useState<AppRole | null>(null);
+  useEffect(() => {
+    if (staffStatus !== 'ready' || !supabaseStaff) {
+      return; // 取得前は role 不定
+    }
+    if (!currentStaffId) {
+      setCurrentUserRole(null);
+      return;
+    }
+    const self = supabaseStaff.find(s => s.id === currentStaffId);
+    if (!self) {
+      // DB 側で staff が消えた/異組織の staffId が localStorage に残っている
+      setCurrentStaffId(null);
+      setCurrentUserRole(null);
+      return;
+    }
+    setCurrentUserRole(staffRoleMap[self.role] ?? 'teacher');
+  }, [staffStatus, supabaseStaff, currentStaffId, setCurrentStaffId]);
 
   const addCalendarEvent = (event: CalendarEvent) => {
     setCalendarEvents(prev => [...prev, event]);
@@ -313,22 +359,76 @@ export function AppLayout({ children }: { children: ReactNode }) {
     auditUpdate('child', id, { action: 'restore' });
   };
 
-  const addStaffToStore = (staff: Staff) => {
-    setStaffData(prev => [...prev, staff]);
-    auditCreate('staff', staff.id, { name: `${staff.lastName} ${staff.firstName}` });
-  };
+  /**
+   * AI 経由の staff 追加 (add_staff intent) は一旦無効化。
+   * Supabase staff 一元化の移行期間中、local state への擬似追加はデータ整合性を
+   * 壊すため行わない。正規ルートは職員一覧の StaffCreateModal (auth+membership 含む)。
+   */
+  const addStaffToStore = useCallback(
+    (staff: Staff) => {
+      addToast({
+        type: 'error',
+        message: `AI経由のスタッフ追加(${staff.lastName} ${staff.firstName})は現在停止中です。職員一覧から手動で追加してください。`,
+      });
+    },
+    [addToast],
+  );
 
-  const updateStaffInStore = (staff: Staff) => {
-    setStaffData(prev => prev.map(s => s.id === staff.id ? staff : s));
-    auditUpdate('staff', staff.id, { name: `${staff.lastName} ${staff.firstName}` });
-  };
+  /** POST /api/staff/[id]/account 経由で既存 staff にアカウントを後付けする */
+  const createStaffAccount = useCallback(
+    async (staffId: string, email: string, password: string) => {
+      const res = await fetch(`/api/staff/${staffId}/account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? 'アカウント作成に失敗しました');
+      }
+      await refetchStaff();
+      auditCreate('staff_account', staffId, { email });
+    },
+    [refetchStaff],
+  );
+
+  /** PATCH /api/staff/[id] 経由で staff を更新し、成功で refetch する */
+  const updateStaff = useCallback(
+    async (staff: Staff) => {
+      const hireDateStr = staff.hireDate
+        ? new Date(staff.hireDate).toISOString().slice(0, 10)
+        : null;
+      const res = await fetch(`/api/staff/${staff.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: staff.firstName,
+          lastName: staff.lastName,
+          role: staff.role,
+          classAssignment: staff.classAssignment ?? null,
+          email: staff.email ?? null,
+          phone: staff.phone ?? null,
+          hireDate: hireDateStr,
+          qualifications: staff.qualifications,
+        }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? '更新に失敗しました');
+      }
+      await refetchStaff();
+      auditUpdate('staff', staff.id, { name: `${staff.lastName} ${staff.firstName}` });
+    },
+    [refetchStaff],
+  );
 
   const { isProcessing, addMessage, confirmMessage, editMessage, cancelMessage, markForRecord } =
     useMessageController({
       messages,
       setMessages,
       childrenData,
-      staffData,
+      // staff 取得前 (loading/unauthenticated/error) は空配列扱い。名前マッチ用の補助データのため支障なし
+      staffData: supabaseStaff ?? [],
       rules,
       addChildToStore,
       addStaffToStore,
@@ -407,7 +507,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
         sidebarPosition,
         setSidebarPosition,
         children: childrenData,
-        staff: staffData,
+        // loading 中は空配列 fallback。staff 画面は staffStatus で明示的に分岐する。
+        staff: supabaseStaff ?? [],
+        staffStatus,
+        refetchStaff,
         addChild: addChildToStore,
         updateChild: updateChildInStore,
         removeChild: removeChildFromStore,
@@ -415,8 +518,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         restoreChild,
         fiscalYear,
         setFiscalYear,
-        addStaff: addStaffToStore,
-        updateStaff: updateStaffInStore,
+        updateStaff,
+        createStaffAccount,
         selectedChildId,
         setSelectedChildId,
         rules,

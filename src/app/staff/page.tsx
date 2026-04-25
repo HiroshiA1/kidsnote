@@ -1,40 +1,11 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useApp, Staff } from '@/components/AppLayout';
 import { calculateYearsOfService } from '@/lib/formatters';
 import { defaultStaffRoleConfigs } from '@/types/settings';
 import StaffCreateModal from '@/components/StaffCreateModal';
-
-// Supabaseのstaff行をUIのStaff型にマップ
-interface SupabaseStaffRow {
-  id: string;
-  first_name: string;
-  last_name: string;
-  role: string;
-  class_assignment: string | null;
-  email: string | null;
-  phone: string | null;
-  hire_date: string | null;
-  qualifications: string[];
-}
-
-function mapSupabaseStaff(row: SupabaseStaffRow): Staff {
-  return {
-    id: row.id,
-    firstName: row.first_name,
-    lastName: row.last_name,
-    role: row.role,
-    classAssignment: row.class_assignment ?? undefined,
-    email: row.email ?? undefined,
-    phone: row.phone ?? undefined,
-    hireDate: row.hire_date ? new Date(row.hire_date) : new Date(),
-    qualifications: row.qualifications ?? [],
-    accountCreated: true,
-    accountEmail: row.email ?? undefined,
-  };
-}
 
 type ViewMode = 'list' | 'card';
 
@@ -78,7 +49,7 @@ function StaffListItem({ staff }: { staff: Staff }) {
             </p>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            {staff.accountCreated ? (
+            {staff.hasAccount ? (
               <span className="text-xs px-2 py-0.5 bg-tertiary/20 text-tertiary rounded-full">アカウント有</span>
             ) : (
               <span className="text-xs px-2 py-0.5 bg-paragraph/10 text-paragraph/50 rounded-full">未作成</span>
@@ -149,48 +120,13 @@ function StaffCard({ staff }: { staff: Staff }) {
 }
 
 export default function StaffPage() {
-  const { staff: localStaffData, settings } = useApp();
+  const { staff: staffData, staffStatus, refetchStaff, settings } = useApp();
   const roleConfigs = settings.staffRoleConfigs ?? defaultStaffRoleConfigs;
   const roleOrder = roleConfigs.map(r => r.name);
-  const [supabaseStaff, setSupabaseStaff] = useState<Staff[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
-
-  const loadStaff = useCallback(async () => {
-    setLoading(true);
-    setFetchError(null);
-    try {
-      const res = await fetch('/api/staff');
-      if (res.status === 401) {
-        // 未ログイン時はlocalデータにフォールバック
-        setSupabaseStaff(null);
-        return;
-      }
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error ?? '取得失敗');
-      }
-      const json = await res.json();
-      const mapped = (json.staff as SupabaseStaffRow[]).map(mapSupabaseStaff);
-      setSupabaseStaff(mapped);
-    } catch (err) {
-      setFetchError(err instanceof Error ? err.message : '取得失敗');
-      setSupabaseStaff(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadStaff();
-  }, [loadStaff]);
-
-  // Supabaseから取れていればそれを優先、失敗時はlocalにフォールバック
-  const staffData = supabaseStaff ?? localStaffData;
 
   const roles = [...new Set(staffData.map(s => s.role))];
 
@@ -246,15 +182,27 @@ export default function StaffPage() {
       <StaffCreateModal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onCreated={loadStaff}
+        onCreated={refetchStaff}
       />
 
-      {loading && (
+      {staffStatus === 'loading' && (
         <div className="max-w-6xl mx-auto px-3 sm:px-6 py-2 text-sm text-paragraph/60">読み込み中...</div>
       )}
-      {fetchError && (
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-2 text-sm text-red-600">
-          スタッフ取得エラー: {fetchError}（ローカルデータを表示中）
+      {staffStatus === 'unauthenticated' && (
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-2 text-sm text-alert">
+          ログインが必要です。<Link href="/login" className="underline">ログイン</Link>してください。
+        </div>
+      )}
+      {staffStatus === 'error' && (
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-2 text-sm text-alert flex items-center gap-3">
+          <span>スタッフ取得に失敗しました。</span>
+          <button
+            type="button"
+            onClick={() => refetchStaff()}
+            className="text-button underline hover:no-underline"
+          >
+            再試行
+          </button>
         </div>
       )}
 
