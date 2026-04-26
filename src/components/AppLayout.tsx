@@ -374,18 +374,58 @@ export function AppLayout({ children }: { children: ReactNode }) {
   };
 
   /**
-   * AI 経由の staff 追加 (add_staff intent) は一旦無効化。
-   * Supabase staff 一元化の移行期間中、local state への擬似追加はデータ整合性を
-   * 壊すため行わない。正規ルートは職員一覧の StaffCreateModal (auth+membership 含む)。
+   * AI 経由の staff 追加 (add_staff intent)。
+   * 設計: AI が作るのは staff レコードのみ。auth user / membership は作らない (= ログインアカウントは
+   * 管理者が詳細ページの「アカウントを作成」から後付け発行する運用)。誤発火による不要なログインアカウント
+   * 発行を防ぐため、AI 経由は password 未指定で /api/staff を叩く設計とした。
+   *
+   * 確定フロー (useMessageController.confirmMessage) は同期 (`(staff: Staff) => void`) を期待するため、
+   * fire-and-forget で実行し、結果は toast で通知する。
    */
   const addStaffToStore = useCallback(
     (staff: Staff) => {
-      addToast({
-        type: 'error',
-        message: `AI経由のスタッフ追加(${staff.lastName} ${staff.firstName})は現在停止中です。職員一覧から手動で追加してください。`,
-      });
+      void (async () => {
+        const hireDateStr = staff.hireDate
+          ? new Date(staff.hireDate).toISOString().slice(0, 10)
+          : null;
+        try {
+          const res = await fetch('/api/staff', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              firstName: staff.firstName,
+              lastName: staff.lastName,
+              role: staff.role,
+              classAssignment: staff.classAssignment ?? null,
+              phone: staff.phone ?? null,
+              hireDate: hireDateStr,
+              qualifications: staff.qualifications,
+              source: 'ai_chat',
+              // email/password は意図的に省略 = アカウント無し staff のみ作成
+            }),
+          });
+          if (!res.ok) {
+            const j = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new Error(j.error ?? 'スタッフ追加に失敗しました');
+          }
+          await refetchStaff();
+          auditCreate('staff', staff.id, {
+            name: `${staff.lastName} ${staff.firstName}`,
+            source: 'ai_chat',
+          });
+          addToast({
+            type: 'success',
+            message: `${staff.lastName} ${staff.firstName} を追加しました。アカウントは詳細ページから作成できます。`,
+          });
+        } catch (err) {
+          addToast({
+            type: 'error',
+            message: err instanceof Error ? err.message : 'スタッフ追加に失敗しました',
+          });
+        }
+      })();
     },
-    [addToast],
+    [addToast, refetchStaff],
   );
 
   /** POST /api/staff/[id]/account 経由で既存 staff にアカウントを後付けする */

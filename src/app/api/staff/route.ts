@@ -5,8 +5,12 @@ import { createAdminClient } from '@/lib/supabase/admin';
 type AppRole = 'admin' | 'manager' | 'teacher' | 'part_time';
 
 interface CreateStaffBody {
-  email: string;
-  password: string;
+  /**
+   * email/password はペアで省略可。両方あれば auth user + membership も作成、両方なければ staff 行のみ作成。
+   * AI 経由の add_staff は staff のみ作成する用途で password 省略を想定。アカウントは管理者が後付けで作成する。
+   */
+  email?: string;
+  password?: string;
   firstName: string;
   lastName: string;
   role: string; // 日本語ロール（園長/主任/担任/副担任/パート）
@@ -14,6 +18,8 @@ interface CreateStaffBody {
   phone?: string;
   hireDate?: string; // ISO date
   qualifications?: string[];
+  /** 監査ログ用の経路識別 (例: 'ai_chat')。未指定なら通常の管理画面操作扱い */
+  source?: string;
 }
 
 // 日本語ロール → DB app_role マッピング
@@ -68,22 +74,60 @@ export async function POST(request: Request) {
   }
 
   const { email, password, firstName, lastName, role } = body;
-  if (!email || !password || !firstName || !lastName || !role) {
+  if (!firstName || !lastName || !role) {
     return NextResponse.json(
-      { error: 'email, password, firstName, lastName, role は必須です' },
+      { error: 'firstName, lastName, role は必須です' },
       { status: 400 },
     );
   }
-  if (password.length < 8) {
+
+  // email/password はペアでのみ受け付ける (片方だけ来たら入力ミスとして弾く)。
+  // 両方なし = staff 行のみ作成 (AI 経由 or 後付けアカウント前提の登録)。
+  // 両方あり = auth user + membership も同時作成 (従来挙動)。
+  const wantsAccount = !!email || !!password;
+  if (wantsAccount && (!email || !password)) {
+    return NextResponse.json(
+      { error: 'email と password は両方指定してください (どちらか省略する場合は両方省略)' },
+      { status: 400 },
+    );
+  }
+  if (password && password.length < 8) {
     return NextResponse.json({ error: 'パスワードは8文字以上必要です' }, { status: 400 });
   }
 
-  // ===== 3. auth user 作成 → staff insert → membership insert =====
   const admin = createAdminClient();
   const orgId = membership.organization_id;
+
+  // ===== 3a. account なしモード: staff 行のみ insert =====
+  if (!wantsAccount) {
+    const { data: staffRow, error: staffError } = await admin
+      .from('staff')
+      .insert({
+        organization_id: orgId,
+        first_name: firstName,
+        last_name: lastName,
+        role,
+        class_assignment: body.classAssignment ?? null,
+        email: null,
+        phone: body.phone ?? null,
+        hire_date: body.hireDate ?? null,
+        qualifications: body.qualifications ?? [],
+      })
+      .select()
+      .single();
+
+    if (staffError || !staffRow) {
+      return NextResponse.json(
+        { error: `スタッフ登録に失敗しました: ${staffError?.message ?? '不明なエラー'}` },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json({ success: true, staff: staffRow, hasAccount: false }, { status: 201 });
+  }
+
+  // ===== 3b. account ありモード: auth user → staff → membership (補償付き) =====
   const dbRole = mapRole(role);
 
-  // 3-1. auth user
   const { data: authData, error: authError } = await admin.auth.admin.createUser({
     email,
     password,
@@ -99,7 +143,6 @@ export async function POST(request: Request) {
 
   const newUserId = authData.user.id;
 
-  // 3-2. staff insert
   const { data: staffRow, error: staffError } = await admin
     .from('staff')
     .insert({
@@ -117,7 +160,6 @@ export async function POST(request: Request) {
     .single();
 
   if (staffError || !staffRow) {
-    // 補償: 作成したauth userを削除
     await admin.auth.admin.deleteUser(newUserId);
     return NextResponse.json(
       { error: `スタッフ登録に失敗しました: ${staffError?.message ?? '不明なエラー'}` },
@@ -125,7 +167,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // 3-3. membership insert
   const { error: memError } = await admin.from('memberships').insert({
     user_id: newUserId,
     organization_id: orgId,
@@ -134,7 +175,6 @@ export async function POST(request: Request) {
   });
 
   if (memError) {
-    // 補償: staff削除 + auth user削除
     await admin.from('staff').delete().eq('id', staffRow.id);
     await admin.auth.admin.deleteUser(newUserId);
     return NextResponse.json(
@@ -143,7 +183,7 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ success: true, staff: staffRow }, { status: 201 });
+  return NextResponse.json({ success: true, staff: staffRow, hasAccount: true }, { status: 201 });
 }
 
 // ===== GET: 一覧取得（同一組織のスタッフ + アカウント有無 + 自分のロール） =====

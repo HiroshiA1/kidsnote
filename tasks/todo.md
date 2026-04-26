@@ -138,4 +138,8 @@
     - `/staff/archived` 退職者一覧 + 復職ボタン
     - 詳細ページ: 退職処理ボタン / 復職ボタン / 退職済みバナー / 退職時アカウント管理セクション非表示
     - 退職者の詳細ページ直リンク対応 (archivedFallback で `?archived=include` 再取得)
-  - [ ] Phase 2d-2: AI 経由 `add_staff` の再有効化 (staff レコードのみ作成、アカウントは管理者が後付け運用)
+  - [x] Phase 2d-2 AI 経由 `add_staff` の再有効化 (2026-04-26):
+    - `POST /api/staff` の email/password を optional に。両方省略 → staff レコードのみ作成 / 両方指定 → 従来通り auth+membership 同時作成 (片方だけは 400)
+    - `addStaffToStore` を停止トーストから fire-and-forget の API 呼び出しに変更。AI 経由は password 省略で叩く設計 → 誤発火でログインアカウントが勝手に発行されない
+    - 成功 toast は「アカウントは詳細ページから作成できます」と後付けフローへ案内
+    - 監査ログに `source: 'ai_chat'` を残す
