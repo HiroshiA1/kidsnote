@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useApp, Staff } from '@/components/AppLayout';
 import { calculateYearsOfService } from '@/lib/formatters';
 import { hasMinRole } from '@/lib/supabase/auth';
 import { defaultStaffRoleConfigs } from '@/types/settings';
+import { mapSupabaseStaff, SupabaseStaffRow } from '@/lib/staffMapper';
 
 const defaultRoleColors: Record<string, string> = {
   '園長': 'bg-button text-white',
@@ -96,6 +97,93 @@ function StaffEditModal({ staff, onSave, onClose, roleNames }: { staff: Staff; o
           <div className="flex gap-3 pt-2">
             <button type="submit" className="flex-1 py-2.5 bg-button text-white rounded-lg font-medium hover:opacity-90 transition-opacity">保存</button>
             <button type="button" onClick={onClose} className="flex-1 py-2.5 bg-secondary/30 text-paragraph rounded-lg font-medium hover:bg-secondary/50 transition-colors">キャンセル</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 退職処理モーダル。理由は任意 (空なら API には null を渡す)。
+ * 親から `onSubmit(reason)` を受け、成功で onClose する。失敗時は内部エラー表示。
+ */
+function StaffArchiveModal({
+  staff,
+  onSubmit,
+  onClose,
+}: {
+  staff: Staff;
+  onSubmit: (reason: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
+    try {
+      await onSubmit(reason.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '退職処理に失敗しました');
+    } finally {
+      // L2: 例外時も submitting フラグを必ず戻す
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-surface rounded-2xl shadow-xl max-w-md w-full mx-4">
+        <div className="px-6 py-4 border-b border-secondary/20 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-headline">退職処理</h2>
+          <button onClick={onClose} className="text-paragraph/60 hover:text-paragraph text-xl">&times;</button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="bg-button/5 border border-button/20 rounded-lg p-3">
+            <p className="text-sm text-headline font-medium">{staff.lastName} {staff.firstName}</p>
+            <p className="text-xs text-paragraph/60">{staff.role}{staff.classAssignment ? ` / ${staff.classAssignment}` : ''}</p>
+          </div>
+
+          <div className="text-xs text-paragraph/70 bg-secondary/10 rounded-lg p-3 space-y-1">
+            <p>・ログインが無効化され、職員一覧から非表示になります。</p>
+            <p>・出席・記録などの過去データは保持されます。</p>
+            <p>・退職者一覧からいつでも復職処理ができます。</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-paragraph/70 mb-1">退職理由（任意）</label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              rows={3}
+              placeholder="例: 自己都合退職、定年、契約満了 など"
+              className="w-full px-3 py-2 bg-surface border border-secondary/30 rounded-lg text-sm text-paragraph focus:outline-none focus:ring-2 focus:ring-button/30"
+            />
+          </div>
+
+          {error && (
+            <div className="text-sm text-alert bg-alert/10 px-3 py-2 rounded-lg">{error}</div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 py-2.5 bg-alert text-white rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {submitting ? '処理中...' : '退職処理する'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-secondary/30 text-paragraph rounded-lg font-medium hover:bg-secondary/50 transition-colors"
+            >
+              キャンセル
+            </button>
           </div>
         </form>
       </div>
@@ -225,14 +313,54 @@ function AccountCreateModal({
 
 export default function StaffDetailPage() {
   const params = useParams();
-  const { staff: staffData, staffStatus, updateStaff, createStaffAccount, currentUserRole, addToast, settings } = useApp();
+  const router = useRouter();
+  const {
+    staff: staffData,
+    staffStatus,
+    updateStaff,
+    createStaffAccount,
+    archiveStaff,
+    restoreStaff,
+    refetchStaff,
+    currentUserRole,
+    addToast,
+    settings,
+  } = useApp();
   const roleConfigs = settings.staffRoleConfigs ?? defaultStaffRoleConfigs;
   const roleNames = roleConfigs.map(r => r.name);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  // 退職済みは GET /api/staff (in-service only) には含まれない。詳細ページに直接遷移したケースに備え
+  // ?archived=include で再取得した結果を別 state に保持する。
+  const [archivedFallback, setArchivedFallback] = useState<Staff | null>(null);
+  const [archivedFallbackTried, setArchivedFallbackTried] = useState(false);
 
-  const staff = staffData.find(s => s.id === params.id);
+  const staffId = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
+  const staff = staffData.find(s => s.id === staffId) ?? archivedFallback;
   const isAdmin = hasMinRole(currentUserRole, 'manager');
+  const isAdminOnly = currentUserRole === 'admin'; // 退職処理は admin のみ (manager 不可)
+  const isArchived = !!staff?.archivedAt;
+
+  // 在職リストにない & 取得済みの状況なら、退職者として再取得を試みる
+  useEffect(() => {
+    if (staffStatus !== 'ready') return;
+    if (!staffId) return;
+    if (staffData.find(s => s.id === staffId)) return;
+    if (archivedFallbackTried) return;
+    setArchivedFallbackTried(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/staff?archived=include`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = (await res.json()) as { staff: SupabaseStaffRow[] };
+        const found = json.staff.find(r => r.id === staffId);
+        if (found) setArchivedFallback(mapSupabaseStaff(found));
+      } catch {
+        // 失敗時は通常 not found 表示
+      }
+    })();
+  }, [staffStatus, staffId, staffData, archivedFallbackTried]);
 
   // staff 取得完了前は not found を出さない (loading 中の誤判定防止)
   if (staffStatus === 'loading' || staffStatus === 'unauthenticated') {
@@ -269,6 +397,33 @@ export default function StaffDetailPage() {
     addToast({ type: 'success', message: `${staff.lastName} ${staff.firstName} のアカウントを作成しました` });
   };
 
+  /** 退職処理。成功で一覧に戻す (詳細ページに残ると archivedFallback で再取得されるが、UX としては一覧復帰が自然) */
+  const handleArchiveSubmit = async (reason: string) => {
+    if (!staff) return;
+    await archiveStaff(staff.id, reason || undefined);
+    setShowArchiveModal(false);
+    addToast({ type: 'success', message: `${staff.lastName} ${staff.firstName} を退職処理しました` });
+    router.push('/staff');
+  };
+
+  /** 復職処理。成功で在職リストに戻り、staffData 経由で再取得される */
+  const handleRestore = async () => {
+    if (!staff) return;
+    try {
+      await restoreStaff(staff.id);
+      // 復職したので archivedFallback を捨て、refetchStaff で在職側に再ロード
+      setArchivedFallback(null);
+      setArchivedFallbackTried(false);
+      await refetchStaff();
+      addToast({ type: 'success', message: `${staff.lastName} ${staff.firstName} を復職しました` });
+    } catch (err) {
+      addToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : '復職処理に失敗しました',
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen pb-8">
       <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-sm border-b border-secondary/20">
@@ -277,19 +432,53 @@ export default function StaffDetailPage() {
             <Link href="/staff" className="text-paragraph/60 hover:text-paragraph transition-colors text-sm">← 一覧に戻る</Link>
             <h1 className="text-xl font-bold text-headline">職員詳細</h1>
           </div>
-          {isAdmin && (
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="px-4 py-2 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              編集
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {isAdmin && !isArchived && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="px-4 py-2 bg-button text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                編集
+              </button>
+            )}
+            {isAdminOnly && !isArchived && (
+              <button
+                onClick={() => setShowArchiveModal(true)}
+                className="px-4 py-2 bg-surface border border-alert/40 text-alert rounded-lg text-sm font-medium hover:bg-alert/10 transition-colors"
+              >
+                退職処理
+              </button>
+            )}
+            {isAdminOnly && isArchived && (
+              <button
+                onClick={handleRestore}
+                className="px-4 py-2 bg-tertiary text-headline rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                復職する
+              </button>
+            )}
+          </div>
         </div>
       </header>
+
+      {isArchived && staff.archivedAt && (
+        <div className="bg-alert/10 border-b border-alert/30">
+          <div className="max-w-6xl mx-auto px-3 sm:px-6 py-3 flex items-start gap-3">
+            <svg className="w-5 h-5 text-alert flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="text-sm text-headline">
+              <p className="font-medium">退職処理済み（{staff.archivedAt.toLocaleDateString('ja-JP')}）</p>
+              {staff.archiveReason && (
+                <p className="text-xs text-paragraph/70 mt-0.5">理由: {staff.archiveReason}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showEditModal && (
         <StaffEditModal
@@ -316,6 +505,14 @@ export default function StaffDetailPage() {
           staff={staff}
           onSubmit={handleAccountSubmit}
           onClose={() => setShowAccountModal(false)}
+        />
+      )}
+
+      {showArchiveModal && (
+        <StaffArchiveModal
+          staff={staff}
+          onSubmit={handleArchiveSubmit}
+          onClose={() => setShowArchiveModal(false)}
         />
       )}
 
@@ -369,6 +566,7 @@ export default function StaffDetailPage() {
         </section>
 
         {/* アカウント管理 — hasAccount は memberships 存在で判定 (API join 経由、真偽値が実態と一致) */}
+        {!isArchived && (
         <section className="bg-surface rounded-xl p-6 shadow-sm">
           <h3 className="text-lg font-bold text-headline mb-4">アカウント管理</h3>
 
@@ -443,6 +641,7 @@ export default function StaffDetailPage() {
             </ol>
           </div>
         </section>
+        )}
       </main>
     </div>
   );

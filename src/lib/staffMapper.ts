@@ -13,6 +13,9 @@ export interface SupabaseStaffRow {
   qualifications: string[];
   /** API が memberships 存在を join して付与するフラグ。真偽値として取得想定 */
   has_account?: boolean;
+  /** Phase 2d: 退職日時 (在職中は null)。ISO 文字列で来る */
+  archived_at?: string | null;
+  archive_reason?: string | null;
 }
 
 /**
@@ -31,5 +34,7 @@ export function mapSupabaseStaff(row: SupabaseStaffRow): Staff {
     hireDate: row.hire_date ? new Date(row.hire_date) : new Date(),
     qualifications: row.qualifications ?? [],
     hasAccount: row.has_account === true,
+    archivedAt: row.archived_at ? new Date(row.archived_at) : undefined,
+    archiveReason: row.archive_reason ?? undefined,
   };
 }

@@ -45,6 +45,10 @@ export interface Staff {
    *    アカウントのメールアドレスは `email` を ログインID と同一運用する前提で staff.email に寄せる。
    */
   hasAccount?: boolean;
+  /** 退職日時。`undefined` なら在職中。園児の archivedAt と同じ思想 */
+  archivedAt?: Date;
+  /** 退職理由 (任意)。退職処理時に管理者が自由入力 */
+  archiveReason?: string;
 }
 
 /** staff データの取得状態。ログイン状態・Supabase 接続状況に応じて画面描画を分岐させるため Context に公開する */
@@ -96,6 +100,16 @@ interface AppContextType {
    * 成功時に refetchStaff で hasAccount を最新化。失敗時は例外を throw。
    */
   createStaffAccount: (staffId: string, email: string, password: string) => Promise<void>;
+  /**
+   * スタッフの退職処理 (ソフト削除)。membership 削除 + archived_at セット。
+   * 失敗時は例外を throw。成功時は refetch して在職リストから外す。
+   */
+  archiveStaff: (staffId: string, reason?: string) => Promise<void>;
+  /**
+   * 退職処理の取り消し (archived_at クリア)。
+   * 失敗時は例外を throw。
+   */
+  restoreStaff: (staffId: string) => Promise<void>;
   selectedChildId: string | null;
   setSelectedChildId: (id: string | null) => void;
   rules: Rule[];
@@ -392,6 +406,38 @@ export function AppLayout({ children }: { children: ReactNode }) {
     [refetchStaff],
   );
 
+  /** DELETE /api/staff/[id] 経由でスタッフを退職処理 (ソフト削除) */
+  const archiveStaff = useCallback(
+    async (staffId: string, reason?: string) => {
+      const res = await fetch(`/api/staff/${staffId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason ?? null }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? '退職処理に失敗しました');
+      }
+      await refetchStaff();
+      auditUpdate('staff', staffId, { action: 'archive', reason: reason ?? null });
+    },
+    [refetchStaff],
+  );
+
+  /** POST /api/staff/[id]/restore 経由で退職処理を取り消す */
+  const restoreStaff = useCallback(
+    async (staffId: string) => {
+      const res = await fetch(`/api/staff/${staffId}/restore`, { method: 'POST' });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? '復職処理に失敗しました');
+      }
+      await refetchStaff();
+      auditUpdate('staff', staffId, { action: 'restore' });
+    },
+    [refetchStaff],
+  );
+
   /** PATCH /api/staff/[id] 経由で staff を更新し、成功で refetch する */
   const updateStaff = useCallback(
     async (staff: Staff) => {
@@ -520,6 +566,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         setFiscalYear,
         updateStaff,
         createStaffAccount,
+        archiveStaff,
+        restoreStaff,
         selectedChildId,
         setSelectedChildId,
         rules,

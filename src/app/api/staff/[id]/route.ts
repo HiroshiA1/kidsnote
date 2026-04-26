@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 interface PatchStaffBody {
   firstName?: string;
@@ -85,4 +86,112 @@ export async function PATCH(
   }
 
   return NextResponse.json({ staff: data });
+}
+
+interface ArchiveStaffBody {
+  reason?: string;
+}
+
+/**
+ * DELETE /api/staff/[id] — スタッフの退職処理 (ソフト削除)。
+ *
+ * 設計:
+ * - 物理削除はせず staff.archived_at + archive_reason をセット。過去の出席記録・コメント等を保持。
+ * - membership は削除してログイン不可化。auth user は残す (再雇用時に再発行可能)。
+ * - 認可: admin のみ (migration 004 の staff_delete に揃える、manager は不可)。
+ * - 自分自身を退職にしない (誤操作防止)。
+ * - 既に archived の対象には 409 を返して冪等性を破らない (二重実行で archive_reason が上書きされない)。
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id: staffId } = await params;
+
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
+  const { data: callerMembership, error: callerMemError } = await supabase
+    .from('memberships')
+    .select('organization_id, role, staff_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .single();
+
+  if (callerMemError || !callerMembership) {
+    return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
+  }
+  if (callerMembership.role !== 'admin') {
+    return NextResponse.json({ error: '退職処理は管理者のみ実行できます' }, { status: 403 });
+  }
+  if (callerMembership.staff_id === staffId) {
+    return NextResponse.json({ error: '自分自身を退職処理することはできません' }, { status: 400 });
+  }
+
+  let body: ArchiveStaffBody = {};
+  try {
+    body = (await request.json()) as ArchiveStaffBody;
+  } catch {
+    // body 省略時は理由なしとみなす
+  }
+
+  const admin = createAdminClient();
+
+  // 対象 staff の存在 + 同組織 + 未 archive を確認
+  const { data: target, error: targetErr } = await admin
+    .from('staff')
+    .select('id, organization_id, archived_at')
+    .eq('id', staffId)
+    .single();
+
+  if (targetErr || !target) {
+    return NextResponse.json({ error: '対象スタッフが見つかりません' }, { status: 404 });
+  }
+  if (target.organization_id !== callerMembership.organization_id) {
+    return NextResponse.json({ error: '対象スタッフが見つかりません' }, { status: 404 });
+  }
+  if (target.archived_at) {
+    return NextResponse.json({ error: 'このスタッフは既に退職処理済みです' }, { status: 409 });
+  }
+
+  // membership 削除 (ログイン不可化) → staff archive
+  // membership が無い (= まだアカウント未作成) staff の退職処理も許可するため、削除失敗は許容しない
+  // が「対象が見つからない」(no-op) は成功扱いにする
+  const { error: memDelErr } = await admin
+    .from('memberships')
+    .delete()
+    .eq('staff_id', staffId);
+
+  if (memDelErr) {
+    return NextResponse.json(
+      { error: `アカウント無効化に失敗しました: ${memDelErr.message}` },
+      { status: 500 },
+    );
+  }
+
+  const reason = body.reason?.trim();
+  const { error: archiveErr } = await admin
+    .from('staff')
+    .update({
+      archived_at: new Date().toISOString(),
+      archive_reason: reason && reason.length > 0 ? reason : null,
+    })
+    .eq('id', staffId);
+
+  if (archiveErr) {
+    // membership は既に消した。auth user は残置でログイン不可状態なので部分成功で返す。
+    // 復旧は管理者がアカウント再作成 API で対処可能。
+    return NextResponse.json(
+      { error: `退職処理に失敗しました: ${archiveErr.message} (アカウントは無効化済み)` },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

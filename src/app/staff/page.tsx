@@ -169,6 +169,12 @@ export default function StaffPage() {
           <h1 className="text-xl font-bold text-headline">職員一覧</h1>
           <div className="flex items-center gap-3">
             <span className="text-sm text-paragraph/60">{filteredStaff.length}名</span>
+            <Link
+              href="/staff/archived"
+              className="text-sm text-paragraph/60 hover:text-paragraph hover:underline"
+            >
+              退職者一覧
+            </Link>
             <button
               onClick={() => setShowCreateModal(true)}
               className="px-3 py-1.5 bg-button text-white text-sm rounded-lg hover:bg-button/90"

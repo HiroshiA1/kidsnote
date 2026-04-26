@@ -156,7 +156,12 @@ export async function POST(request: Request) {
 //   staff.role (日本語) は表示専用で、権限判定には使わない。
 // - auth.users.email は RLS 越しに取れないため、ログイン用アドレスは staff.email と
 //   同一運用する前提。
-export async function GET() {
+export async function GET(request: Request) {
+  // ?archived=only → 退職者のみ / ?archived=include → 全部 / 省略 → 在職中のみ
+  const archivedParam = new URL(request.url).searchParams.get('archived');
+  const archivedMode: 'active' | 'only' | 'include' =
+    archivedParam === 'only' ? 'only' : archivedParam === 'include' ? 'include' : 'active';
+
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -178,11 +183,17 @@ export async function GET() {
     return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
   }
 
-  // RLS により自組織のみ取得される
-  const { data: staffRows, error } = await supabase
+  // RLS により自組織のみ取得される。archived フィルタはここで適用する。
+  let query = supabase
     .from('staff')
     .select('*')
     .order('created_at', { ascending: true });
+  if (archivedMode === 'active') {
+    query = query.is('archived_at', null);
+  } else if (archivedMode === 'only') {
+    query = query.not('archived_at', 'is', null);
+  }
+  const { data: staffRows, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

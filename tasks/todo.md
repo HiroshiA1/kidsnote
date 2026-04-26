@@ -130,5 +130,12 @@
   - [x] `GET /api/staff` 一覧 + `has_account` + `myRole`
   - [x] `PATCH /api/staff/[id]` プロフィール更新
   - [x] `POST /api/staff/[id]/account` 既存スタッフへのアカウント後付け作成 (2026-04-26)
-  - [ ] スタッフ削除/無効化 API (設計議論待ち: auth user 削除 / membership 解除のみ / 退職フラグ)
-  - [ ] AI 経由 `add_staff` の再有効化 (現在は info toast で停止中案内)
+  - [x] Phase 2d-1 退職処理 (ソフト削除) (2026-04-26):
+    - migration 005: `staff.archived_at` + `archive_reason` 追加
+    - `DELETE /api/staff/[id]`: admin 限定、自分自身の退職禁止、membership 削除 + archive
+    - `POST /api/staff/[id]/restore`: admin 限定、archived_at クリア (membership は別途再作成)
+    - `GET /api/staff?archived=active|only|include` フィルタ
+    - `/staff/archived` 退職者一覧 + 復職ボタン
+    - 詳細ページ: 退職処理ボタン / 復職ボタン / 退職済みバナー / 退職時アカウント管理セクション非表示
+    - 退職者の詳細ページ直リンク対応 (archivedFallback で `?archived=include` 再取得)
+  - [ ] Phase 2d-2: AI 経由 `add_staff` の再有効化 (staff レコードのみ作成、アカウントは管理者が後付け運用)
