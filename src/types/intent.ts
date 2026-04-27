@@ -1,4 +1,4 @@
-export type IntentType = 'growth' | 'incident' | 'handover' | 'child_update' | 'add_child' | 'add_staff' | 'rule_query' | 'delete_child' | 'add_rule' | 'delete_rule' | 'update_rule' | 'add_calendar_event';
+export type IntentType = 'growth' | 'incident' | 'handover' | 'child_update' | 'add_child' | 'add_staff' | 'rule_query' | 'delete_child' | 'add_rule' | 'delete_rule' | 'update_rule' | 'add_calendar_event' | 'delete_calendar_event';
 
 export interface GrowthData {
   child_names: string[];
@@ -87,6 +87,16 @@ export interface UpdateRuleData {
   updated_category?: string;
 }
 
+/** 予定削除 — AI起動の破壊的操作。原文の予定文脈+削除語 併存が必須 */
+export interface DeleteCalendarEventData {
+  /** 対象予定タイトルのヒント(AI抽出) */
+  target_title_hint: string;
+  /** 絞り込み用の対象日 (YYYY-MM-DD)。AI が特定できないこともある */
+  target_date?: string;
+  /** 原文に含まれていた削除語(監査用) */
+  matched_keyword?: string;
+}
+
 /** 予定追加 — AI提案を CalendarEventModal で編集確定 */
 export interface AddCalendarEventData {
   title: string;
@@ -118,7 +128,8 @@ export interface IntentResult {
     | AddRuleData
     | DeleteRuleData
     | UpdateRuleData
-    | AddCalendarEventData;
+    | AddCalendarEventData
+    | DeleteCalendarEventData;
   confidence?: number;
 }
 

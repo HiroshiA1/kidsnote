@@ -44,10 +44,11 @@ export function FloatingPopup() {
   const isDeleteRule = aiIntent === 'delete_rule';
   const isUpdateRule = aiIntent === 'update_rule';
   const isAddCalendarEvent = aiIntent === 'add_calendar_event';
+  const isDeleteCalendarEvent = aiIntent === 'delete_calendar_event';
   /** 確認/キャンセルボタンのみで要録マーク不要な intent(AI action系) */
-  const isAiAction = isDeleteChild || isAddRule || isDeleteRule || isUpdateRule || isAddCalendarEvent;
+  const isAiAction = isDeleteChild || isAddRule || isDeleteRule || isUpdateRule || isAddCalendarEvent || isDeleteCalendarEvent;
   /** 破壊的 intent(ボタンを alert 色に) */
-  const isDestructive = isDeleteChild || isDeleteRule;
+  const isDestructive = isDeleteChild || isDeleteRule || isDeleteCalendarEvent;
   const aiMisalignedWithEmergency = isEmergency && aiIntent && aiIntent !== 'incident';
 
   const resolvedDeleteTarget =
@@ -210,6 +211,8 @@ export function FloatingPopup() {
                 ) : isDeleteChild
                   ? '対象を確認して削除へ'
                   : isDeleteRule
+                  ? '対象を確認して削除へ'
+                  : isDeleteCalendarEvent
                   ? '対象を確認して削除へ'
                   : isUpdateRule
                   ? '対象を確認して編集へ'

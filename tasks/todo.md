@@ -122,7 +122,13 @@
 ## Phase 2a 拡張候補
 - [x] `delete_rule`, `update_rule` (ルール削除/編集) — Phase 2c で完了
 - [x] `add_calendar_event` — Phase 2c で完了
-- [ ] `delete_calendar_event` (予定削除)
+- [x] Phase 2e-1 `delete_calendar_event` 予定削除 (2026-04-26):
+  - prompt 拡張(予定文脈+削除/中止/キャンセル語の併存要求) + preClassify 優先順位調整(add_calendar_event より先)
+  - 二重ガード `hasDeleteCalendarEventSignal` (CALENDAR_CONTEXT_WORDS + DELETE_CALENDAR_EVENT_KEYWORDS)
+  - useMessageActions.performDeleteCalendarEvent: タイトル+日付で候補絞り込み(部分一致+date 完全一致)、admin/manager 認可、複数候補は info toast でユーザーに正確指定を促す
+  - 監査ログに `ai_delete_calendar_event_blocked/confirmed/cancelled` を残す
+  - FloatingPopup: isDestructive と isAiAction に組み込み、ボタンラベル「対象を確認して削除へ」
+  - useMessageController: isDestructiveIntent に追加(autoSave 経路を絶対通さない)
 - [ ] `update_child` (一般情報の更新)
 - 職員CRUD
   - [x] Supabase 一元化 (`useSupabaseStaff` + `staffMapper` + AppLayout 統合)

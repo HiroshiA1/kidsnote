@@ -135,6 +135,16 @@ export const intentConfig: Record<IntentType, IntentConfigItem> = {
     cardBg: 'bg-secondary/20',
     href: '/calendar',
   },
+  delete_calendar_event: {
+    label: '予定削除',
+    icon: '🗑️',
+    color: 'text-alert',
+    bgColor: 'bg-alert/10',
+    borderColor: 'border-alert/60',
+    actionLabel: '対象を確認して削除へ',
+    cardBg: 'bg-alert/5',
+    href: '/calendar',
+  },
 };
 
 /** ダッシュボードで表示する記録タイプ */

@@ -2,9 +2,10 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useApp } from '@/components/AppLayout';
-import { hasDeleteChildKeyword, hasDeleteRuleSignal } from '@/lib/constants/deleteKeywords';
+import { hasDeleteChildKeyword, hasDeleteRuleSignal, hasDeleteCalendarEventSignal } from '@/lib/constants/deleteKeywords';
 import { hasMinRole } from '@/lib/supabase/auth';
-import { AddCalendarEventData, AddRuleData, DeleteChildData, DeleteRuleData, InputMessage, UpdateRuleData } from '@/types/intent';
+import { AddCalendarEventData, AddRuleData, DeleteCalendarEventData, DeleteChildData, DeleteRuleData, InputMessage, UpdateRuleData } from '@/types/intent';
+import { CalendarEvent } from '@/types/calendar';
 import { BASIC_RULE_CATEGORIES, Rule } from '@/types/rule';
 import { recordActivity } from '@/lib/activityLog';
 import { ChildWithGrowth } from '@/lib/childrenStore';
@@ -36,6 +37,8 @@ export function useMessageActions() {
     setPendingAiCalendarEvent,
     rules,
     deleteRule,
+    calendarEvents,
+    deleteCalendarEvent,
     currentUserRole,
   } = useApp();
 
@@ -297,6 +300,123 @@ export function useMessageActions() {
     [addToast, canDelete, findMatchingRules, setPendingAiRule],
   );
 
+  /**
+   * 予定削除候補のマッチング。タイトルは緩い部分一致(双方向)、日付指定があれば一致を要求。
+   * date 指定なしのときはタイトル一致のみで返す(候補が複数になりやすいので popup で選択)
+   */
+  const findMatchingCalendarEvents = useCallback(
+    (titleHint: string, dateHint?: string): CalendarEvent[] => {
+      const h = titleHint.trim();
+      if (!h) return [];
+      return calendarEvents.filter(e => {
+        const titleMatch = e.title.includes(h) || h.includes(e.title);
+        if (!titleMatch) return false;
+        if (dateHint) return e.date === dateHint;
+        return true;
+      });
+    },
+    [calendarEvents],
+  );
+
+  const performDeleteCalendarEvent = useCallback(
+    async (msg: InputMessage) => {
+      const data = msg.result?.data as DeleteCalendarEventData | undefined;
+      const matchedKeyword = data?.matched_keyword;
+      const logBlocked = (reason: string, candidateCount: number, target?: CalendarEvent) =>
+        recordActivity('ai_delete_calendar_event_blocked', {
+          sourceMessageId: msg.id,
+          matchedKeyword,
+          candidateCount,
+          role: currentUserRole,
+          targetEventId: target?.id,
+          targetEventTitle: target?.title,
+          targetDate: data?.target_date,
+          reason,
+        });
+
+      // 二重ガード: 原文に予定文脈+削除/中止語が併存するか
+      if (!hasDeleteCalendarEventSignal(msg.content)) {
+        addToast({
+          type: 'error',
+          message: 'AIが予定削除と判定しましたが、原文に予定文脈+削除/中止語がないため中止しました',
+        });
+        logBlocked('no_explicit_calendar_delete_signal', 0);
+        cancelMessage(msg.id);
+        return;
+      }
+      if (!canDelete) {
+        addToast({
+          type: 'error',
+          message: '予定削除は管理者・主任のみ実行できます。管理者にご依頼ください。',
+        });
+        logBlocked('insufficient_role', 0);
+        return;
+      }
+
+      const candidates = findMatchingCalendarEvents(data?.target_title_hint ?? '', data?.target_date);
+      if (candidates.length === 0) {
+        const dateMsg = data?.target_date ? `(${data.target_date})` : '';
+        addToast({
+          type: 'error',
+          message: `「${data?.target_title_hint ?? '不明'}」${dateMsg} に一致する予定が見つかりません。タイトルや日付を正確に指定してください。`,
+        });
+        logBlocked('no_matching_event', 0);
+        return;
+      }
+      if (candidates.length > 1) {
+        const sample = candidates.slice(0, 3).map(c => `「${c.title}(${c.date})」`).join('、');
+        addToast({
+          type: 'info',
+          message: `候補が複数あります(${sample}${candidates.length > 3 ? ' ほか' : ''})。日付やタイトルを正確に指定するか、カレンダー画面で削除してください。`,
+        });
+        logBlocked('multiple_matches', candidates.length);
+        return;
+      }
+
+      const target = candidates[0];
+      const confirmed = await openConfirm({
+        title: `予定「${target.title}」を削除します`,
+        message: `日付: ${target.date}${target.allDay ? ' / 終日' : target.startTime ? ` ${target.startTime}${target.endTime ? '–' + target.endTime : ''}` : ''}\n\nこの操作は取り消せません。予定は復元できません。`,
+        type: 'danger',
+        confirmLabel: '削除する',
+      });
+      if (confirmed) {
+        deleteCalendarEvent(target.id);
+        confirmMessage(msg.id);
+        addToast({ type: 'success', message: `予定「${target.title}」を削除しました` });
+        recordActivity('ai_delete_calendar_event_confirmed', {
+          sourceMessageId: msg.id,
+          matchedKeyword,
+          candidateCount: 1,
+          role: currentUserRole,
+          targetEventId: target.id,
+          targetEventTitle: target.title,
+          targetDate: target.date,
+        });
+      } else {
+        recordActivity('ai_delete_calendar_event_cancelled', {
+          sourceMessageId: msg.id,
+          matchedKeyword,
+          candidateCount: 1,
+          role: currentUserRole,
+          targetEventId: target.id,
+          targetEventTitle: target.title,
+          targetDate: target.date,
+        });
+      }
+    },
+    [
+      addToast,
+      cancelMessage,
+      canDelete,
+      confirmMessage,
+      currentUserRole,
+      deleteCalendarEvent,
+      findMatchingCalendarEvents,
+      openConfirm,
+    ],
+  );
+
   const performAddCalendarEvent = useCallback(
     (msg: InputMessage) => {
       const data = msg.result?.data as AddCalendarEventData | undefined;
@@ -345,6 +465,10 @@ export function useMessageActions() {
         performAddCalendarEvent(msg);
         return { dismiss: false };
       }
+      if (msg.result?.intent === 'delete_calendar_event') {
+        await performDeleteCalendarEvent(msg);
+        return { dismiss: false };
+      }
       if (msg.result?.intent === 'rule_query') {
         // rule_query はそのまま popup から閉じるだけ
         return { dismiss: true };
@@ -352,7 +476,7 @@ export function useMessageActions() {
       confirmMessage(msg.id);
       return { dismiss: false };
     },
-    [confirmMessage, performDeleteChild, performAddRule, performDeleteRule, performUpdateRule, performAddCalendarEvent],
+    [confirmMessage, performDeleteChild, performAddRule, performDeleteRule, performUpdateRule, performAddCalendarEvent, performDeleteCalendarEvent],
   );
 
   const performCancel = useCallback(
@@ -380,11 +504,24 @@ export function useMessageActions() {
           targetRuleId: target?.id,
           targetRuleTitle: target?.title,
         });
+      } else if (msg.result?.intent === 'delete_calendar_event') {
+        const data = msg.result.data as DeleteCalendarEventData | undefined;
+        const evCandidates = findMatchingCalendarEvents(data?.target_title_hint ?? '', data?.target_date);
+        const target = evCandidates.length === 1 ? evCandidates[0] : undefined;
+        recordActivity('ai_delete_calendar_event_cancelled', {
+          sourceMessageId: msg.id,
+          matchedKeyword: data?.matched_keyword,
+          candidateCount: evCandidates.length,
+          role: currentUserRole,
+          targetEventId: target?.id,
+          targetEventTitle: target?.title,
+          targetDate: data?.target_date,
+        });
       }
       cancelMessage(msg.id);
       setSelectedCandidateId(null);
     },
-    [cancelMessage, currentUserRole, findMatchingRules, resolveDeleteTarget],
+    [cancelMessage, currentUserRole, findMatchingRules, findMatchingCalendarEvents, resolveDeleteTarget],
   );
 
   return {

@@ -14,7 +14,10 @@ export type ActivityType =
   | 'ai_delete_rule_blocked'
   | 'ai_delete_rule_confirmed'
   | 'ai_delete_rule_cancelled'
-  | 'ai_add_calendar_event_saved';
+  | 'ai_add_calendar_event_saved'
+  | 'ai_delete_calendar_event_blocked'
+  | 'ai_delete_calendar_event_confirmed'
+  | 'ai_delete_calendar_event_cancelled';
 
 export interface ClassifyPayload {
   inputText: string;
@@ -85,6 +88,20 @@ export interface AiAddCalendarEventPayload {
   date: string;
 }
 
+/** AI起動の予定削除監査用ペイロード */
+export interface AiDeleteCalendarEventPayload {
+  sourceMessageId: string;
+  matchedKeyword?: string;
+  candidateCount: number;
+  role: string | null;
+  /** 確定時は対象予定ID、ブロック/キャンセル時は undefined */
+  targetEventId?: string;
+  targetEventTitle?: string;
+  /** AI が抽出した対象日(YYYY-MM-DD)。null/undefined のこともある */
+  targetDate?: string;
+  reason?: string;
+}
+
 export type ActivityPayload =
   | ClassifyPayload
   | ConfirmPayload
@@ -94,7 +111,8 @@ export type ActivityPayload =
   | AiDeleteChildPayload
   | AiAddRuleSavedPayload
   | AiDeleteRulePayload
-  | AiAddCalendarEventPayload;
+  | AiAddCalendarEventPayload
+  | AiDeleteCalendarEventPayload;
 
 export interface ActivityLog {
   id: string;

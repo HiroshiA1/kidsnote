@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { IntentResult, IntentType, GrowthData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData } from '@/types/intent';
+import { IntentResult, IntentType, GrowthData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData, DeleteCalendarEventData } from '@/types/intent';
 import { SAFETY_KEYWORDS } from './safetyKeywords';
-import { DELETE_CHILD_KEYWORDS } from './constants/deleteKeywords';
+import { DELETE_CHILD_KEYWORDS, DELETE_CALENDAR_EVENT_KEYWORDS, CALENDAR_CONTEXT_WORDS } from './constants/deleteKeywords';
 import { anonymizeText, deanonymizeResult, type AnonymizeResult, type ChildEntry } from './anonymize';
 import { getJstDateString, getJstWeekdayJa } from './localDate';
 
@@ -31,7 +31,14 @@ const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援A
 - 「〇〇ルールの内容を変える」
 「新しいルールを追加」は add_rule に分類すること(区別が重要)。
 
-### 4. add_calendar_event（予定・行事の追加）
+### 4. delete_calendar_event（予定・行事の削除/中止）- 慎重判定
+原文に予定文脈語(予定/行事/イベント/会議/健診/集会/式/打ち合わせ/ミーティング)と
+削除/中止語(削除/消す/消して/消去/中止/取りやめ/キャンセル/取り消し)が併存する場合のみ:
+- 「3/15 の運動会を中止」「明日の職員会議をキャンセル」「来週月曜の健診を削除」
+対象タイトルと、特定できれば対象日(YYYY-MM-DD)を抽出する。
+新規追加(add_calendar_event)と区別すること: 削除/中止語が無ければ delete_calendar_event とはしない。
+
+### 5. add_calendar_event（予定・行事の追加）
 カレンダーに予定/行事を追加する意図:
 - 「来週月曜に健診を入れて」「3/15 に運動会」「明日10時から職員会議」
 - 「〇月〇日に〇〇を予定」
@@ -116,6 +123,10 @@ const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援A
 予定追加の場合:
 {"intent":"add_calendar_event","data":{"title":"予定のタイトル","date":"YYYY-MM-DD","start_time":"HH:mm","end_time":"HH:mm","all_day":false,"category":"行事/健診/会議 等","location":"場所","description":"詳細"},"confidence":0.8}
 ※予定追加では相対日付「明日」「来週月曜」等を絶対日付 YYYY-MM-DD に変換すること。基準日は下部の「現在日付」を使う。
+
+予定削除の場合（原文に予定文脈語+削除/中止語が明示されている場合のみ）:
+{"intent":"delete_calendar_event","data":{"target_title_hint":"対象予定のタイトル(原文から抽出)","target_date":"YYYY-MM-DD(特定できる場合のみ)","matched_keyword":"削除/中止/キャンセル など検出語"},"confidence":0.6}
+※相対日付は YYYY-MM-DD に変換。日付を特定できない場合は target_date を省略する。
 
 ## その他のルール
 - 園児名・職員名は「〜くん」「〜ちゃん」「〜さん」「〜先生」を除いた名前のみ抽出
@@ -273,6 +284,15 @@ function convertToIntent(text: string, intent: IntentType, originalResult: Inten
     return { intent: 'add_calendar_event', data, confidence: 0.6 };
   }
 
+  if (intent === 'delete_calendar_event') {
+    const matchedKeyword = DELETE_CALENDAR_EVENT_KEYWORDS.find(kw => text.includes(kw));
+    const data: DeleteCalendarEventData = {
+      target_title_hint: text,
+      matched_keyword: matchedKeyword,
+    };
+    return { intent: 'delete_calendar_event', data, confidence: 0.6 };
+  }
+
   // その他の場合は元のデータを使用
   return { ...originalResult, intent };
 }
@@ -322,6 +342,14 @@ function preClassifyByKeyword(text: string): IntentType | null {
   // ルール追加のキーワード (rule_query より先に判定)
   if (ADD_RULE_KEYWORDS.some(kw => text.includes(kw))) {
     return 'add_rule';
+  }
+
+  // 予定削除: カレンダー文脈語 + 削除/中止語の併存。add_calendar_event より先に判定する
+  // (「○月○日の運動会を中止」のような文で add_calendar_event に倒れないように)
+  const hasCalCtx = CALENDAR_CONTEXT_WORDS.some(kw => text.includes(kw));
+  const hasCalDeleteKw = DELETE_CALENDAR_EVENT_KEYWORDS.some(kw => text.includes(kw));
+  if (hasCalCtx && hasCalDeleteKw) {
+    return 'delete_calendar_event';
   }
 
   // 予定追加: 日付表現っぽいもの + イベント関連語
@@ -453,6 +481,21 @@ export async function classifyIntent(
       }
     }
 
+    // delete_calendar_event の二重ガード: 原文にカレンダー文脈語+削除/中止語の併存が必須
+    if (parsed.intent === 'delete_calendar_event') {
+      const hasDeleteKw = DELETE_CALENDAR_EVENT_KEYWORDS.some(kw => guardText.includes(kw));
+      const hasCalCtx = CALENDAR_CONTEXT_WORDS.some(kw => guardText.includes(kw));
+      if (!hasDeleteKw || !hasCalCtx) {
+        parsed = {
+          intent: 'growth',
+          data: { child_names: [], summary: text, tags: [] } as GrowthData,
+          confidence: 0,
+        };
+      } else {
+        parsed = { ...parsed, confidence: Math.min(parsed.confidence ?? 0.6, 0.7) };
+      }
+    }
+
     // キーワード事前判定がある場合はintentを上書きし、データも変換
     if (preClassified && parsed.intent !== preClassified) {
       return {
@@ -491,7 +534,7 @@ function isValidIntent(result: unknown): result is IntentResult {
   const r = result as Record<string, unknown>;
   if (!r.intent || !r.data) return false;
 
-  const validIntents: IntentType[] = ['growth', 'incident', 'handover', 'child_update', 'add_child', 'add_staff', 'rule_query', 'delete_child', 'add_rule', 'delete_rule', 'update_rule', 'add_calendar_event'];
+  const validIntents: IntentType[] = ['growth', 'incident', 'handover', 'child_update', 'add_child', 'add_staff', 'rule_query', 'delete_child', 'add_rule', 'delete_rule', 'update_rule', 'add_calendar_event', 'delete_calendar_event'];
   if (!validIntents.includes(r.intent as IntentType)) return false;
 
   return true;

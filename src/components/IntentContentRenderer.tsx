@@ -1,7 +1,7 @@
 'use client';
 
 import { useApp } from './AppLayout';
-import { IntentResult, GrowthData, IncidentData, HandoverData, ChildUpdateData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData } from '@/types/intent';
+import { IntentResult, GrowthData, IncidentData, HandoverData, ChildUpdateData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData, DeleteCalendarEventData } from '@/types/intent';
 import { ChildLinks } from './ChildLink';
 import { severityLabels, severityColors, genderLabels, fieldLabels } from '@/lib/formatters';
 
@@ -243,6 +243,18 @@ function UpdateRuleContent({ data, compact }: { data: UpdateRuleData; compact: b
   );
 }
 
+function DeleteCalendarEventContent({ data, compact }: { data: DeleteCalendarEventData; compact: boolean }) {
+  const textCls = compact ? 'text-xs' : 'text-sm';
+  return (
+    <div className={`${textCls} space-y-1`}>
+      <p className="font-medium text-alert">予定削除の判定: {data.target_title_hint || '(対象タイトル不明)'}</p>
+      {data.target_date && <p className="text-paragraph/70">対象日: {data.target_date}</p>}
+      {data.matched_keyword && <p className="text-paragraph/60 text-[11px]">検出語: {data.matched_keyword}</p>}
+      <p className="text-paragraph/60 text-[11px]">確定後、対象を確認して削除します。</p>
+    </div>
+  );
+}
+
 function AddCalendarEventContent({ data, compact }: { data: AddCalendarEventData; compact: boolean }) {
   const textCls = compact ? 'text-xs' : 'text-sm';
   return (
@@ -287,5 +299,7 @@ export function IntentContentRenderer({ result, mode, linkedChildIds, ruleAnswer
       return <UpdateRuleContent data={result.data as UpdateRuleData} compact={compact} />;
     case 'add_calendar_event':
       return <AddCalendarEventContent data={result.data as AddCalendarEventData} compact={compact} />;
+    case 'delete_calendar_event':
+      return <DeleteCalendarEventContent data={result.data as DeleteCalendarEventData} compact={compact} />;
   }
 }

@@ -158,9 +158,12 @@ export function useMessageController({
       } else {
         const hasSafetyHit = SAFETY_KEYWORDS.some(kw => text.includes(kw));
         const isHighConfidence = result?.confidence !== undefined && result.confidence >= 0.9;
-        const isDestructiveIntent = result?.intent === 'delete_child' || result?.intent === 'delete_rule';
+        const isDestructiveIntent =
+          result?.intent === 'delete_child' ||
+          result?.intent === 'delete_rule' ||
+          result?.intent === 'delete_calendar_event';
         // AI起動のCRUD系 intent は教諭の目視確認・編集・最終保存を経るため必ず autoSave スキップ
-        // (add_child/add_staff/add_rule/update_rule/delete_child/delete_rule/add_calendar_event)
+        // (add_child/add_staff/add_rule/update_rule/delete_child/delete_rule/add_calendar_event/delete_calendar_event)
         const isAiCrudIntent =
           result?.intent === 'add_child' ||
           result?.intent === 'add_staff' ||
