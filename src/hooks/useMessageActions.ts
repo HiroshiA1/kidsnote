@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useApp } from '@/components/AppLayout';
 import { hasDeleteChildKeyword, hasDeleteRuleSignal, hasDeleteCalendarEventSignal } from '@/lib/constants/deleteKeywords';
 import { hasMinRole } from '@/lib/supabase/auth';
-import { AddCalendarEventData, AddRuleData, DeleteCalendarEventData, DeleteChildData, DeleteRuleData, InputMessage, UpdateRuleData } from '@/types/intent';
+import { AddCalendarEventData, AddRuleData, DeleteCalendarEventData, DeleteChildData, DeleteRuleData, InputMessage, UpdateChildData, UpdateRuleData } from '@/types/intent';
 import { CalendarEvent } from '@/types/calendar';
 import { BASIC_RULE_CATEGORIES, Rule } from '@/types/rule';
 import { recordActivity } from '@/lib/activityLog';
@@ -35,6 +35,7 @@ export function useMessageActions() {
     addToast,
     setPendingAiRule,
     setPendingAiCalendarEvent,
+    setPendingAiChildUpdate,
     rules,
     deleteRule,
     calendarEvents,
@@ -417,6 +418,72 @@ export function useMessageActions() {
     ],
   );
 
+  /**
+   * AI 提案による園児情報更新 (実データ書き換え)。
+   *
+   * 設計:
+   * - 対象園児は `aiMatchedChildIds` (= 原文匿名化由来) のみ採用 (lessons L9 準拠)
+   * - 候補が複数なら更新を中止して toast でユーザーに正確指定を促す (誤更新防止)
+   * - 候補がゼロなら error toast
+   * - 1 件のみのとき pendingAiChildUpdate を立てて確認モーダルを開く
+   * - 認可: teacher 以上 (連絡先/興味の更新は teacher も日常的に行う)
+   * - 監査ログ: blocked のみここで記録 (confirm/cancel はモーダル側 = AppLayout で記録)
+   */
+  const performUpdateChild = useCallback(
+    (msg: InputMessage) => {
+      const data = msg.result?.data as UpdateChildData | undefined;
+      if (!data) return;
+      const matchedKeyword = data.matched_keyword;
+      const candidates = (msg.aiMatchedChildIds ?? [])
+        .map(id => childrenData.find(c => c.id === id))
+        .filter((c): c is ChildWithGrowth => !!c);
+      const candidateCount = candidates.length;
+      const logBlocked = (reason: string) =>
+        recordActivity('ai_update_child_blocked', {
+          sourceMessageId: msg.id,
+          field: data.field,
+          newValue: data.new_value,
+          matchedKeyword,
+          targetName: data.target_name,
+          candidateCount,
+          role: currentUserRole,
+          reason,
+        });
+
+      if (candidateCount === 0) {
+        addToast({
+          type: 'error',
+          message: `「${data.target_name || '不明'}」に一致する園児が見つかりません。フルネームやクラスで指定してください。`,
+        });
+        logBlocked('no_matching_child');
+        cancelMessage(msg.id);
+        return;
+      }
+      if (candidateCount > 1) {
+        addToast({
+          type: 'info',
+          message: `同名の園児が${candidateCount}名います。フルネームやクラスで一意に指定してください。`,
+        });
+        logBlocked('multiple_matches');
+        return;
+      }
+      // teacher 以上は OK (admin/manager/teacher)。part_time のみブロック。
+      if (currentUserRole === 'part_time') {
+        addToast({ type: 'error', message: '園児情報の変更はパート以上の役職のみ実行できます。' });
+        logBlocked('insufficient_role');
+        return;
+      }
+
+      const target = candidates[0];
+      setPendingAiChildUpdate({
+        sourceMessageId: msg.id,
+        childId: target.id,
+        data,
+      });
+    },
+    [addToast, cancelMessage, childrenData, currentUserRole, setPendingAiChildUpdate],
+  );
+
   const performAddCalendarEvent = useCallback(
     (msg: InputMessage) => {
       const data = msg.result?.data as AddCalendarEventData | undefined;
@@ -469,6 +536,10 @@ export function useMessageActions() {
         await performDeleteCalendarEvent(msg);
         return { dismiss: false };
       }
+      if (msg.result?.intent === 'update_child') {
+        performUpdateChild(msg);
+        return { dismiss: false };
+      }
       if (msg.result?.intent === 'rule_query') {
         // rule_query はそのまま popup から閉じるだけ
         return { dismiss: true };
@@ -476,7 +547,7 @@ export function useMessageActions() {
       confirmMessage(msg.id);
       return { dismiss: false };
     },
-    [confirmMessage, performDeleteChild, performAddRule, performDeleteRule, performUpdateRule, performAddCalendarEvent, performDeleteCalendarEvent],
+    [confirmMessage, performDeleteChild, performAddRule, performDeleteRule, performUpdateRule, performAddCalendarEvent, performDeleteCalendarEvent, performUpdateChild],
   );
 
   const performCancel = useCallback(

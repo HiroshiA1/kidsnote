@@ -163,13 +163,14 @@ export function useMessageController({
           result?.intent === 'delete_rule' ||
           result?.intent === 'delete_calendar_event';
         // AI起動のCRUD系 intent は教諭の目視確認・編集・最終保存を経るため必ず autoSave スキップ
-        // (add_child/add_staff/add_rule/update_rule/delete_child/delete_rule/add_calendar_event/delete_calendar_event)
+        // (add_child/add_staff/add_rule/update_rule/delete_child/delete_rule/add_calendar_event/delete_calendar_event/update_child)
         const isAiCrudIntent =
           result?.intent === 'add_child' ||
           result?.intent === 'add_staff' ||
           result?.intent === 'add_rule' ||
           result?.intent === 'update_rule' ||
-          result?.intent === 'add_calendar_event';
+          result?.intent === 'add_calendar_event' ||
+          result?.intent === 'update_child';
         const shouldAutoSave =
           isHighConfidence &&
           !hasSafetyHit &&

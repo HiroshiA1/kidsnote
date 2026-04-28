@@ -1,7 +1,7 @@
 'use client';
 
 import { useApp } from './AppLayout';
-import { IntentResult, GrowthData, IncidentData, HandoverData, ChildUpdateData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData, DeleteCalendarEventData } from '@/types/intent';
+import { IntentResult, GrowthData, IncidentData, HandoverData, ChildUpdateData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData, DeleteCalendarEventData, UpdateChildData } from '@/types/intent';
 import { ChildLinks } from './ChildLink';
 import { severityLabels, severityColors, genderLabels, fieldLabels } from '@/lib/formatters';
 
@@ -243,6 +243,19 @@ function UpdateRuleContent({ data, compact }: { data: UpdateRuleData; compact: b
   );
 }
 
+function UpdateChildContent({ data, compact }: { data: UpdateChildData; compact: boolean }) {
+  const textCls = compact ? 'text-xs' : 'text-sm';
+  const fieldLabel = data.field === 'emergency_contact_phone' ? '緊急連絡先(電話)' : '興味追加';
+  return (
+    <div className={`${textCls} space-y-1`}>
+      <p className="font-medium text-headline">対象: {data.target_name || '(園児名不明)'}{data.class_hint ? `(${data.class_hint})` : ''}</p>
+      <p className="text-paragraph/70">{fieldLabel}: <span className="font-medium">{data.new_value || '(値未抽出)'}</span></p>
+      {data.matched_keyword && <p className="text-paragraph/60 text-[11px]">検出語: {data.matched_keyword}</p>}
+      <p className="text-paragraph/60 text-[11px]">確定で変更内容を確認するモーダルが開きます。</p>
+    </div>
+  );
+}
+
 function DeleteCalendarEventContent({ data, compact }: { data: DeleteCalendarEventData; compact: boolean }) {
   const textCls = compact ? 'text-xs' : 'text-sm';
   return (
@@ -301,5 +314,7 @@ export function IntentContentRenderer({ result, mode, linkedChildIds, ruleAnswer
       return <AddCalendarEventContent data={result.data as AddCalendarEventData} compact={compact} />;
     case 'delete_calendar_event':
       return <DeleteCalendarEventContent data={result.data as DeleteCalendarEventData} compact={compact} />;
+    case 'update_child':
+      return <UpdateChildContent data={result.data as UpdateChildData} compact={compact} />;
   }
 }

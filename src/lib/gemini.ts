@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { IntentResult, IntentType, GrowthData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData, DeleteCalendarEventData } from '@/types/intent';
+import { IntentResult, IntentType, GrowthData, AddChildData, AddStaffData, RuleQueryData, DeleteChildData, AddRuleData, DeleteRuleData, UpdateRuleData, AddCalendarEventData, DeleteCalendarEventData, UpdateChildData } from '@/types/intent';
 import { SAFETY_KEYWORDS } from './safetyKeywords';
 import { DELETE_CHILD_KEYWORDS, DELETE_CALENDAR_EVENT_KEYWORDS, CALENDAR_CONTEXT_WORDS } from './constants/deleteKeywords';
 import { anonymizeText, deanonymizeResult, type AnonymizeResult, type ChildEntry } from './anonymize';
@@ -73,8 +73,19 @@ const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援A
 ### 9. incident（ヒヤリハット）
 怪我・事故・危険な出来事・ヒヤリとした場面
 
-### 10. child_update（園児情報更新）
-既存園児のアレルギー情報の変更・特性の追加など
+### 10. update_child（園児情報の実データ書き換え）- 慎重判定
+既存園児の **連絡先または興味関心** を実データとして書き換える意図のみ:
+- 「太郎の緊急連絡先を 090-1234-5678 に変更」「太郎の連絡先電話 090-...に」
+- 「太郎は最近 電車に夢中」「太郎の興味に 折り紙 を追加」
+**v1 では下記 2 フィールドのみ対応:**
+  - field='emergency_contact_phone': 緊急連絡先の電話番号変更 (new_value は電話番号)
+  - field='add_interest': 興味関心の追加 (new_value は追加する興味)
+名前・誕生日・性別・クラス・アレルギー・配慮事項の変更は update_child としない (誤発火被害が大きいため、別フローを案内)。
+原文に対象園児名が必須。
+
+### 11. child_update（園児情報の記録カード作成）
+既存園児のアレルギー情報の変更・特性の追加など、**記録として残すだけ** (実データは書き換えない、別 intent):
+- update_child との違い: 「気づき・記録」レベルの情報。
 ※「入園」を含まない、既存園児の情報更新のみ
 
 ### 11. handover（申し送り）
@@ -127,6 +138,9 @@ const CLASSIFICATION_PROMPT = `あなたは幼稚園・保育園の業務支援A
 予定削除の場合（原文に予定文脈語+削除/中止語が明示されている場合のみ）:
 {"intent":"delete_calendar_event","data":{"target_title_hint":"対象予定のタイトル(原文から抽出)","target_date":"YYYY-MM-DD(特定できる場合のみ)","matched_keyword":"削除/中止/キャンセル など検出語"},"confidence":0.6}
 ※相対日付は YYYY-MM-DD に変換。日付を特定できない場合は target_date を省略する。
+
+園児情報変更の場合（連絡先電話 or 興味追加のみ、対象園児名が必須）:
+{"intent":"update_child","data":{"target_name":"園児名","class_hint":"クラス名や年齢(任意)","field":"emergency_contact_phone or add_interest","new_value":"新しい値","matched_keyword":"連絡先/電話/興味 等の検出語"},"confidence":0.6}
 
 ## その他のルール
 - 園児名・職員名は「〜くん」「〜ちゃん」「〜さん」「〜先生」を除いた名前のみ抽出
@@ -293,6 +307,19 @@ function convertToIntent(text: string, intent: IntentType, originalResult: Inten
     return { intent: 'delete_calendar_event', data, confidence: 0.6 };
   }
 
+  if (intent === 'update_child') {
+    // preClassify から強制された場合の最低限の data 形状。フィールド/値の抽出は AI 任せで、
+    // ここでは data 形状の整合だけ守る。発火しても確定モーダルでユーザーが必ず編集する前提。
+    const matchedKeyword = UPDATE_CHILD_FIELD_WORDS.find(kw => text.includes(kw));
+    const data: UpdateChildData = {
+      target_name: extractName(text),
+      field: text.includes('電話') || text.includes('連絡先') ? 'emergency_contact_phone' : 'add_interest',
+      new_value: '',
+      matched_keyword: matchedKeyword,
+    };
+    return { intent: 'update_child', data, confidence: 0.6 };
+  }
+
   // その他の場合は元のデータを使用
   return { ...originalResult, intent };
 }
@@ -314,6 +341,12 @@ const DELETE_RULE_KEYWORDS = ['削除', '消して', '消す', '消去', '廃止
 
 /** add_calendar_event のキーワード */
 const ADD_CALENDAR_EVENT_KEYWORDS = ['予定', '行事', '会議', '健診', 'イベント', '入れて', '追加して'];
+
+/** update_child のフィールド示唆語(緊急連絡先電話 or 興味追加のみ) */
+const UPDATE_CHILD_FIELD_WORDS = ['緊急連絡先', '連絡先', '電話', '興味', '夢中', '関心', 'ハマって'];
+
+/** update_child の変更示唆語 */
+const UPDATE_CHILD_CHANGE_WORDS = ['変わ', '変更', '変えて', '変える', '修正', '更新', '追加', '最近', '新しい', 'に変', 'にして'];
 
 // キーワードベースの事前判定（AIより優先）
 function preClassifyByKeyword(text: string): IntentType | null {
@@ -496,6 +529,22 @@ export async function classifyIntent(
       }
     }
 
+    // update_child の二重ガード: 原文にフィールド示唆語+変更示唆語の併存が必須
+    // (lessons L9 準拠: 確定の対象園児特定は呼び出し側 aiMatchedChildIds (= 原文匿名化由来) で実施)
+    if (parsed.intent === 'update_child') {
+      const hasFieldKw = UPDATE_CHILD_FIELD_WORDS.some(kw => guardText.includes(kw));
+      const hasChangeKw = UPDATE_CHILD_CHANGE_WORDS.some(kw => guardText.includes(kw));
+      if (!hasFieldKw || !hasChangeKw) {
+        parsed = {
+          intent: 'growth',
+          data: { child_names: [], summary: text, tags: [] } as GrowthData,
+          confidence: 0,
+        };
+      } else {
+        parsed = { ...parsed, confidence: Math.min(parsed.confidence ?? 0.6, 0.7) };
+      }
+    }
+
     // キーワード事前判定がある場合はintentを上書きし、データも変換
     if (preClassified && parsed.intent !== preClassified) {
       return {
@@ -534,7 +583,7 @@ function isValidIntent(result: unknown): result is IntentResult {
   const r = result as Record<string, unknown>;
   if (!r.intent || !r.data) return false;
 
-  const validIntents: IntentType[] = ['growth', 'incident', 'handover', 'child_update', 'add_child', 'add_staff', 'rule_query', 'delete_child', 'add_rule', 'delete_rule', 'update_rule', 'add_calendar_event', 'delete_calendar_event'];
+  const validIntents: IntentType[] = ['growth', 'incident', 'handover', 'child_update', 'add_child', 'add_staff', 'rule_query', 'delete_child', 'add_rule', 'delete_rule', 'update_rule', 'add_calendar_event', 'delete_calendar_event', 'update_child'];
   if (!validIntents.includes(r.intent as IntentType)) return false;
 
   return true;

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, createContext, useContext, ReactNode 
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { SmartInput, Attachment } from './SmartInput';
-import { IntentResult, InputMessage } from '@/types/intent';
+import { IntentResult, InputMessage, UpdateChildData } from '@/types/intent';
 import { Rule, RuleChatMessage } from '@/types/rule';
 import { ChildWithGrowth } from '@/lib/childrenStore';
 import { AttendanceRecord } from '@/types/document';
@@ -21,6 +21,7 @@ import { ConfirmDialogContainer, useConfirm, ConfirmOptions } from './ConfirmDia
 import { RuleModal, RuleSavePayload } from './RuleModal';
 import { Breadcrumbs } from './Breadcrumbs';
 import { CalendarEventModal } from './CalendarEventModal';
+import { ChildUpdateModal } from './ChildUpdateModal';
 import { getJstDateString } from '@/lib/localDate';
 import { recordActivity } from '@/lib/activityLog';
 import { useHydration, staffRoleMap } from '@/hooks/useHydration';
@@ -142,6 +143,9 @@ interface AppContextType {
   /** AI提案予定の編集モーダルを開くためのstate */
   pendingAiCalendarEvent: { sourceMessageId: string; draft: Partial<CalendarEvent> } | null;
   setPendingAiCalendarEvent: (value: { sourceMessageId: string; draft: Partial<CalendarEvent> } | null) => void;
+  /** AI提案による園児情報更新の確認モーダルを開くためのstate */
+  pendingAiChildUpdate: { sourceMessageId: string; childId: string; data: UpdateChildData } | null;
+  setPendingAiChildUpdate: (value: { sourceMessageId: string; childId: string; data: UpdateChildData } | null) => void;
   calendarEvents: CalendarEvent[];
   addCalendarEvent: (event: CalendarEvent) => void;
   updateCalendarEvent: (event: CalendarEvent) => void;
@@ -331,6 +335,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [pendingAiRule, setPendingAiRule] = useState<{ sourceMessageId: string; draft: Partial<Rule>; updateTargetId?: string } | null>(null);
   const [pendingAiCalendarEvent, setPendingAiCalendarEvent] = useState<{ sourceMessageId: string; draft: Partial<CalendarEvent> } | null>(null);
+  const [pendingAiChildUpdate, setPendingAiChildUpdate] = useState<{ sourceMessageId: string; childId: string; data: UpdateChildData } | null>(null);
 
   const addChildToStore = (child: ChildWithGrowth) => {
     setChildrenData(prev => [...prev, child]);
@@ -638,6 +643,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         setPendingAiRule,
         pendingAiCalendarEvent,
         setPendingAiCalendarEvent,
+        pendingAiChildUpdate,
+        setPendingAiChildUpdate,
         calendarEvents,
         addCalendarEvent,
         updateCalendarEvent,
@@ -791,6 +798,66 @@ export function AppLayout({ children }: { children: ReactNode }) {
             }}
           />
         )}
+        {pendingAiChildUpdate && (() => {
+          const target = childrenData.find(c => c.id === pendingAiChildUpdate.childId);
+          if (!target) {
+            // 対象が消えていた場合は state を巻き戻して何も描画しない
+            setPendingAiChildUpdate(null);
+            return null;
+          }
+          return (
+            <ChildUpdateModal
+              child={target}
+              data={pendingAiChildUpdate.data}
+              onSubmit={async (newValue) => {
+                const updated = { ...target, updatedAt: new Date() };
+                if (pendingAiChildUpdate.data.field === 'emergency_contact_phone') {
+                  updated.emergencyContact = {
+                    ...(target.emergencyContact ?? { name: '', phone: '', relationship: '' }),
+                    phone: newValue,
+                  };
+                } else if (pendingAiChildUpdate.data.field === 'add_interest') {
+                  const next = [...(target.interests ?? [])];
+                  if (newValue && !next.includes(newValue)) next.push(newValue);
+                  updated.interests = next;
+                }
+                updateChildInStore(updated);
+                confirmMessage(pendingAiChildUpdate.sourceMessageId);
+                recordActivity('ai_update_child_confirmed', {
+                  sourceMessageId: pendingAiChildUpdate.sourceMessageId,
+                  targetChildId: target.id,
+                  field: pendingAiChildUpdate.data.field,
+                  newValue,
+                  oldValue: pendingAiChildUpdate.data.field === 'emergency_contact_phone'
+                    ? (target.emergencyContact?.phone ?? '')
+                    : (target.interests ?? []).join(', '),
+                  matchedKeyword: pendingAiChildUpdate.data.matched_keyword,
+                  targetName: pendingAiChildUpdate.data.target_name,
+                  candidateCount: 1,
+                  role: currentUserRole,
+                });
+                addToast({
+                  type: 'success',
+                  message: `${target.lastName} ${target.firstName} の${pendingAiChildUpdate.data.field === 'emergency_contact_phone' ? '緊急連絡先' : '興味'}を更新しました`,
+                });
+                setPendingAiChildUpdate(null);
+              }}
+              onClose={() => {
+                recordActivity('ai_update_child_cancelled', {
+                  sourceMessageId: pendingAiChildUpdate.sourceMessageId,
+                  targetChildId: target.id,
+                  field: pendingAiChildUpdate.data.field,
+                  newValue: pendingAiChildUpdate.data.new_value,
+                  matchedKeyword: pendingAiChildUpdate.data.matched_keyword,
+                  targetName: pendingAiChildUpdate.data.target_name,
+                  candidateCount: 1,
+                  role: currentUserRole,
+                });
+                setPendingAiChildUpdate(null);
+              }}
+            />
+          );
+        })()}
         {!isLoginPage && <SmartInput onSubmit={addMessage} isProcessing={isProcessing} sidebarCollapsed={sidebarCollapsed} sidebarPosition={sidebarPosition} selectedChildName={selectedChildId ? (() => { const c = childrenData.find(ch => ch.id === selectedChildId); return c ? `${c.lastNameKanji || c.lastName} ${c.firstNameKanji || c.firstName}`.trim() : null; })() : null} onError={(msg) => addToast({ type: 'error', message: msg })} />}
       </div>
     </AppContext.Provider>

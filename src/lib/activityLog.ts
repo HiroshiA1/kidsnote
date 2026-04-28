@@ -17,7 +17,10 @@ export type ActivityType =
   | 'ai_add_calendar_event_saved'
   | 'ai_delete_calendar_event_blocked'
   | 'ai_delete_calendar_event_confirmed'
-  | 'ai_delete_calendar_event_cancelled';
+  | 'ai_delete_calendar_event_cancelled'
+  | 'ai_update_child_blocked'
+  | 'ai_update_child_confirmed'
+  | 'ai_update_child_cancelled';
 
 export interface ClassifyPayload {
   inputText: string;
@@ -88,6 +91,27 @@ export interface AiAddCalendarEventPayload {
   date: string;
 }
 
+/** AI起動の園児情報更新(実データ書き換え)監査用ペイロード */
+export interface AiUpdateChildPayload {
+  sourceMessageId: string;
+  /** 対象 child の id (確定/キャンセル時のみ。blocked では undefined) */
+  targetChildId?: string;
+  /** 更新フィールド(UpdateChildData.field と同値) */
+  field: string;
+  /** 適用した新値 (キャンセル/blocked では適用しないが、AI が抽出した値を残す) */
+  newValue: string;
+  /** 適用前の値(差分監査用、blocked/no_match 等の段階では undefined もありうる) */
+  oldValue?: string;
+  /** 原文に含まれていたフィールド示唆語 */
+  matchedKeyword?: string;
+  /** AI が抽出した対象園児名 */
+  targetName?: string;
+  candidateCount: number;
+  role: string | null;
+  /** ブロック理由 (blocked のみ) */
+  reason?: string;
+}
+
 /** AI起動の予定削除監査用ペイロード */
 export interface AiDeleteCalendarEventPayload {
   sourceMessageId: string;
@@ -112,7 +136,8 @@ export type ActivityPayload =
   | AiAddRuleSavedPayload
   | AiDeleteRulePayload
   | AiAddCalendarEventPayload
-  | AiDeleteCalendarEventPayload;
+  | AiDeleteCalendarEventPayload
+  | AiUpdateChildPayload;
 
 export interface ActivityLog {
   id: string;

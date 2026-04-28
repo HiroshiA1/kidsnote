@@ -45,8 +45,9 @@ export function FloatingPopup() {
   const isUpdateRule = aiIntent === 'update_rule';
   const isAddCalendarEvent = aiIntent === 'add_calendar_event';
   const isDeleteCalendarEvent = aiIntent === 'delete_calendar_event';
+  const isUpdateChild = aiIntent === 'update_child';
   /** 確認/キャンセルボタンのみで要録マーク不要な intent(AI action系) */
-  const isAiAction = isDeleteChild || isAddRule || isDeleteRule || isUpdateRule || isAddCalendarEvent || isDeleteCalendarEvent;
+  const isAiAction = isDeleteChild || isAddRule || isDeleteRule || isUpdateRule || isAddCalendarEvent || isDeleteCalendarEvent || isUpdateChild;
   /** 破壊的 intent(ボタンを alert 色に) */
   const isDestructive = isDeleteChild || isDeleteRule || isDeleteCalendarEvent;
   const aiMisalignedWithEmergency = isEmergency && aiIntent && aiIntent !== 'incident';
@@ -220,6 +221,8 @@ export function FloatingPopup() {
                   ? '内容を確認して保存'
                   : isAddCalendarEvent
                   ? '内容を確認して保存'
+                  : isUpdateChild
+                  ? '変更内容を確認して保存'
                   : (config?.actionLabel ?? '確認')}
               </button>
               {!isRuleQuery && (

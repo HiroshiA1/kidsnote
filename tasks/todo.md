@@ -129,7 +129,14 @@
   - 監査ログに `ai_delete_calendar_event_blocked/confirmed/cancelled` を残す
   - FloatingPopup: isDestructive と isAiAction に組み込み、ボタンラベル「対象を確認して削除へ」
   - useMessageController: isDestructiveIntent に追加(autoSave 経路を絶対通さない)
-- [ ] `update_child` (一般情報の更新)
+- [x] Phase 2e-2 `update_child` 園児情報の実データ更新 (2026-04-28):
+  - 既存 `child_update` (記録カードのみ生成、実データ書き換えなし) はそのまま温存し、新 intent `update_child` で実データ更新を分離
+  - v1 対応フィールドは安全寄りの 2 つに限定: `emergency_contact_phone` (緊急連絡先電話) / `add_interest` (interests 配列に追加)。名前/誕生日/性別/クラス/アレルギー/配慮事項は v1 対象外
+  - 二重ガード: 原文に UPDATE_CHILD_FIELD_WORDS (連絡先/電話/興味/夢中 等) + UPDATE_CHILD_CHANGE_WORDS (変わ/変更/最近 等) の併存が必須、無ければ growth フォールバック
+  - 候補は `aiMatchedChildIds` のみ採用 (lessons L9 準拠)。複数候補は適用せず toast で正確指定を促す
+  - 認可: teacher 以上 (part_time のみブロック)。admin/manager 限定にしない
+  - 専用 ChildUpdateModal: before/after 差分プレビュー、new_value はユーザー編集可、phone は形式バリデーション (8桁以上)、interest は 30 字以内
+  - 監査ログ: `ai_update_child_blocked/confirmed/cancelled` + AiUpdateChildPayload (oldValue/newValue 差分付き)
 - 職員CRUD
   - [x] Supabase 一元化 (`useSupabaseStaff` + `staffMapper` + AppLayout 統合)
   - [x] `POST /api/staff` 新規作成 (auth user + staff + membership 一括 + 補償)

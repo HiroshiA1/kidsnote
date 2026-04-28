@@ -145,6 +145,16 @@ export const intentConfig: Record<IntentType, IntentConfigItem> = {
     cardBg: 'bg-alert/5',
     href: '/calendar',
   },
+  update_child: {
+    label: '園児情報変更',
+    icon: '✏️',
+    color: 'text-headline',
+    bgColor: 'bg-button/10',
+    borderColor: 'border-button/50',
+    actionLabel: '内容を確認して保存',
+    cardBg: 'bg-button/5',
+    href: '/children',
+  },
 };
 
 /** ダッシュボードで表示する記録タイプ */
