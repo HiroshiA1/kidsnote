@@ -135,7 +135,9 @@ function CollapsibleSection({
 
 export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
-  const { currentUserRole, fiscalYear, setFiscalYear, settings, sidebarPosition } = useApp();
+  const { currentUserRole, currentStaffId, staff, fiscalYear, setFiscalYear, settings, sidebarPosition } = useApp();
+  // 現在ログイン中のユーザー (Supabase staff から導出)。staff 取得前/未ログイン時は null
+  const currentStaff = currentStaffId ? staff.find(s => s.id === currentStaffId) ?? null : null;
   const hiddenItems = settings.menuVisibility?.hiddenItems ?? [];
   const yearOptions = getFiscalYearOptions();
   // モバイルの drawer は常に左から出す (Codex 合意: 利き手切替は md+ の固定レイアウトのみ)
@@ -203,6 +205,38 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
         </button>
       </div>
 
+      {/* 現在のアカウント表示 — 別アプリと混同しないよう常時可視化 */}
+      {currentStaff && !isCollapsed && (
+        <div className="px-4 py-3 border-b border-secondary/10">
+          <p className="text-[10px] text-paragraph/50 font-medium mb-1.5 uppercase tracking-wide">ログイン中</p>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-button/10 rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-sm font-bold text-button">
+                {(currentStaff.lastName || currentStaff.firstName || '?').charAt(0)}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-headline truncate">
+                {currentStaff.lastName} {currentStaff.firstName}
+              </p>
+              <p className="text-xs text-paragraph/60 truncate">{currentStaff.role}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {currentStaff && isCollapsed && (
+        <div
+          className="p-3 border-b border-secondary/10 flex justify-center"
+          title={`${currentStaff.lastName} ${currentStaff.firstName}(${currentStaff.role})`}
+        >
+          <div className="w-9 h-9 bg-button/10 rounded-full flex items-center justify-center">
+            <span className="text-sm font-bold text-button">
+              {(currentStaff.lastName || currentStaff.firstName || '?').charAt(0)}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 年度切替 */}
       {!isCollapsed && (
         <div className="px-4 pt-3 pb-2 border-b border-secondary/10">
@@ -258,15 +292,6 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
         })}
       </nav>
 
-      {/* AIモードインジケーター */}
-      {!isCollapsed && (
-        <div className="p-3 border-t border-secondary/20">
-          <div className="flex items-center gap-2 px-3 py-2 bg-tertiary/20 rounded-lg">
-            <span className="w-2 h-2 bg-tertiary rounded-full animate-pulse" />
-            <span className="text-xs text-paragraph">AI入力モード</span>
-          </div>
-        </div>
-      )}
     </aside>
     </>
   );
