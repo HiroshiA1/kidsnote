@@ -137,8 +137,16 @@ export async function POST(
   });
 
   if (authError || !authData.user) {
+    // メアド重複だけは 409 + 日本語メッセージで UX を整える (それ以外は従来通り)
+    const rawMsg = authError?.message ?? '';
+    if (rawMsg.toLowerCase().includes('already been registered') || rawMsg.toLowerCase().includes('already exists')) {
+      return NextResponse.json(
+        { error: 'このメールアドレスは既に別アカウントで登録されています。別のメールアドレスでお試しください。' },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
-      { error: `ユーザー作成に失敗しました: ${authError?.message ?? '不明なエラー'}` },
+      { error: `ユーザー作成に失敗しました: ${rawMsg || '不明なエラー'}` },
       { status: 500 },
     );
   }

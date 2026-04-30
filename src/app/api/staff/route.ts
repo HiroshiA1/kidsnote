@@ -135,8 +135,16 @@ export async function POST(request: Request) {
   });
 
   if (authError || !authData.user) {
+    // Supabase Auth の代表的エラーは英文。「メアド重複」だけは UX 上頻出するため日本語化＋409 化する
+    const rawMsg = authError?.message ?? '';
+    if (rawMsg.toLowerCase().includes('already been registered') || rawMsg.toLowerCase().includes('already exists')) {
+      return NextResponse.json(
+        { error: 'このメールアドレスは既に別アカウントで登録されています。別のメールアドレスでお試しください。' },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
-      { error: `ユーザー作成に失敗しました: ${authError?.message ?? '不明なエラー'}` },
+      { error: `ユーザー作成に失敗しました: ${rawMsg || '不明なエラー'}` },
       { status: 500 },
     );
   }
