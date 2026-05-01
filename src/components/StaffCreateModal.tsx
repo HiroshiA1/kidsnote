@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useApp } from './AppLayout';
 import { defaultStaffRoleConfigs } from '@/types/settings';
+import { apiFetch } from '@/lib/apiClient';
 
 interface Props {
   open: boolean;
@@ -45,7 +46,7 @@ export default function StaffCreateModal({ open, onClose, onCreated }: Props) {
     setError(null);
     setSubmitting(true);
     try {
-      const res = await fetch('/api/staff', {
+      const res = await apiFetch('/api/staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

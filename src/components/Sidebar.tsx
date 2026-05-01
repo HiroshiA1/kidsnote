@@ -135,9 +135,31 @@ function CollapsibleSection({
 
 export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
-  const { currentUserRole, currentStaffId, staff, fiscalYear, setFiscalYear, settings, sidebarPosition } = useApp();
+  const {
+    currentUserRole,
+    currentStaffId,
+    staff,
+    fiscalYear,
+    setFiscalYear,
+    settings,
+    sidebarPosition,
+    organizations,
+    currentOrganizationId,
+    setCurrentOrganizationId,
+    currentUserEmail,
+  } = useApp();
   // 現在ログイン中のユーザー (Supabase staff から導出)。staff 取得前/未ログイン時は null
   const currentStaff = currentStaffId ? staff.find(s => s.id === currentStaffId) ?? null : null;
+  const currentOrg = currentOrganizationId
+    ? organizations.find(o => o.id === currentOrganizationId) ?? null
+    : null;
+  // staff レコードが無い場合は email を表示するフォールバック (自己プロフィール未作成ユーザー向け)
+  const accountDisplayName = currentStaff
+    ? `${currentStaff.lastName} ${currentStaff.firstName}`.trim()
+    : currentUserEmail;
+  const accountSubLabel = currentStaff
+    ? currentStaff.role
+    : currentOrg?.role ?? currentUserRole ?? '';
   const hiddenItems = settings.menuVisibility?.hiddenItems ?? [];
   const yearOptions = getFiscalYearOptions();
   // モバイルの drawer は常に左から出す (Codex 合意: 利き手切替は md+ の固定レイアウトのみ)
@@ -205,33 +227,53 @@ export function Sidebar({ isCollapsed, onToggle, mobileOpen, onMobileClose }: Si
         </button>
       </div>
 
-      {/* 現在のアカウント表示 — 別アプリと混同しないよう常時可視化 */}
-      {currentStaff && !isCollapsed && (
+      {/* 施設(組織) — 複数所属時はセレクタで切替可能 */}
+      {!isCollapsed && currentOrg && (
+        <div className="px-4 py-3 border-b border-secondary/10">
+          <p className="text-[10px] text-paragraph/50 font-medium mb-1.5 uppercase tracking-wide">施設</p>
+          {organizations.length > 1 ? (
+            <select
+              value={currentOrg.id}
+              onChange={(e) => setCurrentOrganizationId(e.target.value)}
+              className="w-full px-2 py-1.5 bg-surface border border-secondary/30 rounded-md text-sm font-medium text-headline focus:outline-none focus:ring-2 focus:ring-button/30"
+            >
+              {organizations.map(o => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="px-2 py-1 text-sm font-medium text-headline truncate">{currentOrg.name}</p>
+          )}
+        </div>
+      )}
+
+      {/* 現在のアカウント表示 — staff 紐付けがあれば名前+役職、無ければ email + role を表示 */}
+      {!isCollapsed && accountDisplayName && (
         <div className="px-4 py-3 border-b border-secondary/10">
           <p className="text-[10px] text-paragraph/50 font-medium mb-1.5 uppercase tracking-wide">ログイン中</p>
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 bg-button/10 rounded-full flex items-center justify-center flex-shrink-0">
               <span className="text-sm font-bold text-button">
-                {(currentStaff.lastName || currentStaff.firstName || '?').charAt(0)}
+                {accountDisplayName.charAt(0).toUpperCase()}
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-headline truncate">
-                {currentStaff.lastName} {currentStaff.firstName}
-              </p>
-              <p className="text-xs text-paragraph/60 truncate">{currentStaff.role}</p>
+              <p className="text-sm font-medium text-headline truncate">{accountDisplayName}</p>
+              {accountSubLabel && (
+                <p className="text-xs text-paragraph/60 truncate">{accountSubLabel}</p>
+              )}
             </div>
           </div>
         </div>
       )}
-      {currentStaff && isCollapsed && (
+      {isCollapsed && accountDisplayName && (
         <div
           className="p-3 border-b border-secondary/10 flex justify-center"
-          title={`${currentStaff.lastName} ${currentStaff.firstName}(${currentStaff.role})`}
+          title={`${accountDisplayName}${accountSubLabel ? `(${accountSubLabel})` : ''}${currentOrg ? ` / ${currentOrg.name}` : ''}`}
         >
           <div className="w-9 h-9 bg-button/10 rounded-full flex items-center justify-center">
             <span className="text-sm font-bold text-button">
-              {(currentStaff.lastName || currentStaff.firstName || '?').charAt(0)}
+              {accountDisplayName.charAt(0).toUpperCase()}
             </span>
           </div>
         </div>

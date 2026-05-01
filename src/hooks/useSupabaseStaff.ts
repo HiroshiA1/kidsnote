@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Staff, StaffStatus } from '@/components/AppLayout';
 import { mapSupabaseStaff, SupabaseStaffRow } from '@/lib/staffMapper';
+import { apiFetch } from '@/lib/apiClient';
 
 /**
  * Supabase 上の staff を canonical source として取得する hook。
@@ -13,8 +14,10 @@ import { mapSupabaseStaff, SupabaseStaffRow } from '@/lib/staffMapper';
  *   呼び出し側が「何を描画するか」を決め打ちできるようにする
  * - `initialStaff` のような local seed fallback は持たない(偽データを表示しない)
  * - 追加/更新後の再取得用に `refetch` を公開
+ * - `organizationId` を引数に取り、組織切替時に refetch される (apiFetch 経由で
+ *   x-organization-id ヘッダが付与される設計)
  */
-export function useSupabaseStaff() {
+export function useSupabaseStaff(organizationId: string | null) {
   const [staff, setStaff] = useState<Staff[] | null>(null);
   const [status, setStatus] = useState<StaffStatus>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +29,7 @@ export function useSupabaseStaff() {
     setStatus('loading');
     setError(null);
     try {
-      const res = await fetch('/api/staff', { cache: 'no-store' });
+      const res = await apiFetch('/api/staff', { cache: 'no-store' });
       if (reqIdRef.current !== myReqId) return; // 古いレスポンスは捨てる
       if (res.status === 401) {
         setStaff(null);
@@ -49,9 +52,14 @@ export function useSupabaseStaff() {
     }
   }, []);
 
+  // 組織が確定したタイミングで毎回 refetch (切替時にも反映)
   useEffect(() => {
+    if (organizationId === null) {
+      // 組織未確定 (初回ロード前 / 所属組織なし) は loading のまま放置
+      return;
+    }
     refetch();
-  }, [refetch]);
+  }, [refetch, organizationId]);
 
   return { staff, status, error, refetch };
 }

@@ -8,6 +8,7 @@ import { calculateYearsOfService } from '@/lib/formatters';
 import { hasMinRole } from '@/lib/supabase/auth';
 import { defaultStaffRoleConfigs } from '@/types/settings';
 import { mapSupabaseStaff, SupabaseStaffRow } from '@/lib/staffMapper';
+import { apiFetch } from '@/lib/apiClient';
 
 const defaultRoleColors: Record<string, string> = {
   '園長': 'bg-button text-white',
@@ -351,7 +352,7 @@ export default function StaffDetailPage() {
     setArchivedFallbackTried(true);
     (async () => {
       try {
-        const res = await fetch(`/api/staff?archived=include`, { cache: 'no-store' });
+        const res = await apiFetch(`/api/staff?archived=include`, { cache: 'no-store' });
         if (!res.ok) return;
         const json = (await res.json()) as { staff: SupabaseStaffRow[] };
         const found = json.staff.find(r => r.id === staffId);

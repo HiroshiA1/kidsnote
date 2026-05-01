@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { resolveCallerMembership } from '@/lib/api/membership';
 
 /**
  * POST /api/staff/[id]/restore — 退職処理の取り消し。
@@ -14,30 +14,14 @@ import { createAdminClient } from '@/lib/supabase/admin';
  * - 認可: admin のみ。
  */
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: staffId } = await params;
 
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-  }
-
-  const { data: callerMembership, error: callerMemError } = await supabase
-    .from('memberships')
-    .select('organization_id, role')
-    .eq('user_id', user.id)
-    .limit(1)
-    .single();
-
-  if (callerMemError || !callerMembership) {
-    return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
-  }
+  const r = await resolveCallerMembership(request);
+  if (r.error) return r.error;
+  const { membership: callerMembership } = r;
   if (callerMembership.role !== 'admin') {
     return NextResponse.json({ error: '復職処理は管理者のみ実行できます' }, { status: 403 });
   }
@@ -53,7 +37,7 @@ export async function POST(
   if (targetErr || !target) {
     return NextResponse.json({ error: '対象スタッフが見つかりません' }, { status: 404 });
   }
-  if (target.organization_id !== callerMembership.organization_id) {
+  if (target.organization_id !== callerMembership.organizationId) {
     return NextResponse.json({ error: '対象スタッフが見つかりません' }, { status: 404 });
   }
   if (!target.archived_at) {

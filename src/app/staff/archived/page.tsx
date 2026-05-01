@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useApp, Staff } from '@/components/AppLayout';
 import { mapSupabaseStaff, SupabaseStaffRow } from '@/lib/staffMapper';
+import { apiFetch } from '@/lib/apiClient';
 
 /**
  * 退職者一覧。
@@ -25,7 +26,7 @@ export default function ArchivedStaffPage() {
     setStatus('loading');
     setError(null);
     try {
-      const res = await fetch('/api/staff?archived=only', { cache: 'no-store' });
+      const res = await apiFetch('/api/staff?archived=only', { cache: 'no-store' });
       if (res.status === 401) {
         setStatus('unauthenticated');
         setArchived(null);

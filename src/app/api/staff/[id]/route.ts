@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { resolveCallerMembership } from '@/lib/api/membership';
 
 interface PatchStaffBody {
   firstName?: string;
@@ -27,25 +27,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-  }
-
-  const { data: membership, error: membershipError } = await supabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .limit(1)
-    .single();
-
-  if (membershipError || !membership) {
-    return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
-  }
+  const r = await resolveCallerMembership(request);
+  if (r.error) return r.error;
+  const { membership, supabase } = r;
   if (membership.role !== 'admin' && membership.role !== 'manager') {
     return NextResponse.json({ error: '権限がありません' }, { status: 403 });
   }
@@ -74,10 +58,12 @@ export async function PATCH(
 
   patch.updated_at = new Date().toISOString();
 
+  // 組織越境防止: 自組織の staff のみ更新可
   const { data, error } = await supabase
     .from('staff')
     .update(patch)
     .eq('id', id)
+    .eq('organization_id', membership.organizationId)
     .select()
     .single();
 
@@ -107,30 +93,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: staffId } = await params;
+  const r = await resolveCallerMembership(request);
+  if (r.error) return r.error;
+  const { membership: callerMembership } = r;
 
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-  }
-
-  const { data: callerMembership, error: callerMemError } = await supabase
-    .from('memberships')
-    .select('organization_id, role, staff_id')
-    .eq('user_id', user.id)
-    .limit(1)
-    .single();
-
-  if (callerMemError || !callerMembership) {
-    return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
-  }
   if (callerMembership.role !== 'admin') {
     return NextResponse.json({ error: '退職処理は管理者のみ実行できます' }, { status: 403 });
   }
-  if (callerMembership.staff_id === staffId) {
+  if (callerMembership.staffId === staffId) {
     return NextResponse.json({ error: '自分自身を退職処理することはできません' }, { status: 400 });
   }
 
@@ -153,7 +123,7 @@ export async function DELETE(
   if (targetErr || !target) {
     return NextResponse.json({ error: '対象スタッフが見つかりません' }, { status: 404 });
   }
-  if (target.organization_id !== callerMembership.organization_id) {
+  if (target.organization_id !== callerMembership.organizationId) {
     return NextResponse.json({ error: '対象スタッフが見つかりません' }, { status: 404 });
   }
   if (target.archived_at) {

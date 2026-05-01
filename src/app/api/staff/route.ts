@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { resolveCallerMembership } from '@/lib/api/membership';
 
 type AppRole = 'admin' | 'manager' | 'teacher' | 'part_time';
 
@@ -40,26 +41,10 @@ function mapRole(jpRole: string): AppRole {
 }
 
 export async function POST(request: Request) {
-  // ===== 1. 認可: ログイン中のユーザーが admin/manager か =====
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-  }
-
-  const { data: membership, error: membershipError } = await supabase
-    .from('memberships')
-    .select('organization_id, role')
-    .eq('user_id', user.id)
-    .limit(1)
-    .single();
-
-  if (membershipError || !membership) {
-    return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
-  }
+  // ===== 1. 認可 (組織切替ヘッダ x-organization-id 対応) =====
+  const r = await resolveCallerMembership(request);
+  if (r.error) return r.error;
+  const { membership } = r;
 
   if (membership.role !== 'admin' && membership.role !== 'manager') {
     return NextResponse.json({ error: '権限がありません' }, { status: 403 });
@@ -96,7 +81,7 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
-  const orgId = membership.organization_id;
+  const orgId = membership.organizationId;
 
   // ===== 3a. account なしモード: staff 行のみ insert =====
   if (!wantsAccount) {
@@ -210,31 +195,16 @@ export async function GET(request: Request) {
   const archivedMode: 'active' | 'only' | 'include' =
     archivedParam === 'only' ? 'only' : archivedParam === 'include' ? 'include' : 'active';
 
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // ログイン中ユーザーの membership を「現在選択中の組織」基準で解決 (組織切替ヘッダ対応)
+  const r = await resolveCallerMembership(request);
+  if (r.error) return r.error;
+  const { membership: myMembership, supabase } = r;
 
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-  }
-
-  // ログイン中ユーザーの membership を取り、所属組織と自ロールを確定
-  const { data: myMembership, error: myMemberError } = await supabase
-    .from('memberships')
-    .select('organization_id, role, staff_id')
-    .eq('user_id', user.id)
-    .limit(1)
-    .single();
-
-  if (myMemberError || !myMembership) {
-    return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
-  }
-
-  // RLS により自組織のみ取得される。archived フィルタはここで適用する。
+  // 自組織の staff のみ明示的に絞る (RLS でも守られるが、複数組織所属時の保険)
   let query = supabase
     .from('staff')
     .select('*')
+    .eq('organization_id', myMembership.organizationId)
     .order('created_at', { ascending: true });
   if (archivedMode === 'active') {
     query = query.is('archived_at', null);
@@ -254,7 +224,7 @@ export async function GET(request: Request) {
   const { data: memRows, error: memError } = await admin
     .from('memberships')
     .select('staff_id')
-    .eq('organization_id', myMembership.organization_id)
+    .eq('organization_id', myMembership.organizationId)
     .not('staff_id', 'is', null);
 
   const staffIdsWithAccount = memError
@@ -264,7 +234,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     staff: rows.map(r => ({ ...r, has_account: staffIdsWithAccount.has(r.id) })),
     myRole: myMembership.role,
-    mySelfStaffId: myMembership.staff_id ?? null,
+    mySelfStaffId: myMembership.staffId ?? null,
     ...(memError ? { warning: `アカウント判定で警告: ${memError.message}` } : {}),
   });
 }

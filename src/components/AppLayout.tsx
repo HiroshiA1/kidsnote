@@ -27,6 +27,7 @@ import { recordActivity } from '@/lib/activityLog';
 import { useHydration, staffRoleMap } from '@/hooks/useHydration';
 import { useMessageController } from '@/hooks/useMessageController';
 import { useSupabaseStaff } from '@/hooks/useSupabaseStaff';
+import { apiFetch, setApiOrgContext } from '@/lib/apiClient';
 
 // 職員型
 export interface Staff {
@@ -58,6 +59,13 @@ export type StaffStatus = 'loading' | 'ready' | 'error' | 'unauthenticated';
 /** サイドバーの配置。利き手に応じて個人別に記憶する */
 export type SidebarPosition = 'left' | 'right';
 
+/** ログインユーザーが所属する組織 1 件 (組織切替 UI で使用) */
+export interface OrganizationMembership {
+  id: string;
+  name: string;
+  role: string;
+}
+
 interface AppContextType {
   messages: InputMessage[];
   addMessage: (content: string, attachments?: Attachment[], options?: { emergency?: boolean }) => Promise<void>;
@@ -81,6 +89,14 @@ interface AppContextType {
   staffStatus: StaffStatus;
   /** staff 再取得 (StaffCreateModal 等、mutation 成功後に呼ぶ) */
   refetchStaff: () => Promise<void>;
+  /** ログインユーザーが所属する全組織 (組織切替 UI で使用) */
+  organizations: OrganizationMembership[];
+  /** 現在選択中の組織 ID。null は未確定 (loading or 所属組織なし) */
+  currentOrganizationId: string | null;
+  /** 組織切替。切替後は staff/organizations を再取得 */
+  setCurrentOrganizationId: (orgId: string) => void;
+  /** ログインユーザーのメールアドレス (Supabase auth.users.email)。staff 未紐付けでも常に取れる */
+  currentUserEmail: string | null;
   addChild: (child: ChildWithGrowth) => void;
   updateChild: (child: ChildWithGrowth) => void;
   /** 物理削除(復元不可)。管理者のみ。通常操作は archiveChild を推奨 */
@@ -203,8 +219,76 @@ export function AppLayout({ children }: { children: ReactNode }) {
     newYearSetup, setNewYearSetup,
   } = useHydration();
 
-  // staff は Supabase canonical。画面は staffStatus で描画分岐する
-  const { staff: supabaseStaff, status: staffStatus, refetch: refetchStaff } = useSupabaseStaff();
+  // ===== 所属組織と現在選択中の組織 =====
+  // GET /api/organizations から取得。currentOrganizationId は localStorage に永続化し、
+  // 切替時に setApiOrgContext を呼んで全 fetch に x-organization-id を付与させる。
+  const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
+  const [currentOrganizationId, setCurrentOrganizationIdState] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+
+  const orgStorageKey = useCallback((email: string | null) => {
+    return `kidsnote:current-org:${email ?? 'anon'}`;
+  }, []);
+
+  // 初回 + login 後: 所属組織を取得し、localStorage の選択を復元 (無ければ 1 件目)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // 組織選択ヘッダ未設定状態で /api/organizations を呼ぶ → 全所属組織が返る
+        const res = await fetch('/api/organizations', { cache: 'no-store' });
+        if (cancelled) return;
+        if (res.status === 401) {
+          setOrganizations([]);
+          setCurrentOrganizationIdState(null);
+          setCurrentUserEmail(null);
+          setApiOrgContext(null);
+          return;
+        }
+        if (!res.ok) return;
+        const json = (await res.json()) as { organizations: OrganizationMembership[]; email: string | null };
+        if (cancelled) return;
+        setOrganizations(json.organizations);
+        setCurrentUserEmail(json.email);
+        // 現在選択を復元
+        let initial: string | null = null;
+        try {
+          const saved = window.localStorage.getItem(orgStorageKey(json.email));
+          if (saved && json.organizations.some(o => o.id === saved)) initial = saved;
+        } catch {
+          // localStorage 失敗時は無視
+        }
+        if (!initial && json.organizations.length > 0) {
+          initial = json.organizations[0].id;
+        }
+        setCurrentOrganizationIdState(initial);
+        setApiOrgContext(initial);
+      } catch {
+        // 通信エラー: 組織未取得のまま (UI 側はログイン誘導や empty を出す)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgStorageKey]);
+
+  const setCurrentOrganizationId = useCallback(
+    (orgId: string) => {
+      if (!organizations.some(o => o.id === orgId)) return;
+      setCurrentOrganizationIdState(orgId);
+      setApiOrgContext(orgId);
+      try {
+        window.localStorage.setItem(orgStorageKey(currentUserEmail), orgId);
+      } catch {
+        // ignore
+      }
+    },
+    [organizations, orgStorageKey, currentUserEmail],
+  );
+
+  // staff は Supabase canonical。画面は staffStatus で描画分岐する。
+  // currentOrganizationId が変わるたび refetch するため key として渡す。
+  const { staff: supabaseStaff, status: staffStatus, refetch: refetchStaff } = useSupabaseStaff(currentOrganizationId);
 
   // currentUserRole は Supabase staff 取得後に currentStaffId から導出する。
   // currentStaffId が Supabase に存在しなければ null にクリアして stale 値を残さない。
@@ -394,7 +478,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           ? new Date(staff.hireDate).toISOString().slice(0, 10)
           : null;
         try {
-          const res = await fetch('/api/staff', {
+          const res = await apiFetch('/api/staff', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -436,7 +520,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   /** POST /api/staff/[id]/account 経由で既存 staff にアカウントを後付けする */
   const createStaffAccount = useCallback(
     async (staffId: string, email: string, password: string) => {
-      const res = await fetch(`/api/staff/${staffId}/account`, {
+      const res = await apiFetch(`/api/staff/${staffId}/account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -454,7 +538,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   /** DELETE /api/staff/[id] 経由でスタッフを退職処理 (ソフト削除) */
   const archiveStaff = useCallback(
     async (staffId: string, reason?: string) => {
-      const res = await fetch(`/api/staff/${staffId}`, {
+      const res = await apiFetch(`/api/staff/${staffId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: reason ?? null }),
@@ -472,7 +556,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   /** POST /api/staff/[id]/restore 経由で退職処理を取り消す */
   const restoreStaff = useCallback(
     async (staffId: string) => {
-      const res = await fetch(`/api/staff/${staffId}/restore`, { method: 'POST' });
+      const res = await apiFetch(`/api/staff/${staffId}/restore`, { method: 'POST' });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(j.error ?? '復職処理に失敗しました');
@@ -489,7 +573,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       const hireDateStr = staff.hireDate
         ? new Date(staff.hireDate).toISOString().slice(0, 10)
         : null;
-      const res = await fetch(`/api/staff/${staff.id}`, {
+      const res = await apiFetch(`/api/staff/${staff.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -602,6 +686,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
         staff: supabaseStaff ?? [],
         staffStatus,
         refetchStaff,
+        organizations,
+        currentOrganizationId,
+        setCurrentOrganizationId,
+        currentUserEmail,
         addChild: addChildToStore,
         updateChild: updateChildInStore,
         removeChild: removeChildFromStore,

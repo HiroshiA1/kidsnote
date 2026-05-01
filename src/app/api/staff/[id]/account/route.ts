@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { resolveCallerMembership } from '@/lib/api/membership';
 
 type AppRole = 'admin' | 'manager' | 'teacher' | 'part_time';
 
@@ -46,26 +46,10 @@ export async function POST(
 ) {
   const { id: staffId } = await params;
 
-  // ===== 1. 認可 =====
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-  }
-
-  const { data: callerMembership, error: callerMemError } = await supabase
-    .from('memberships')
-    .select('organization_id, role')
-    .eq('user_id', user.id)
-    .limit(1)
-    .single();
-
-  if (callerMemError || !callerMembership) {
-    return NextResponse.json({ error: '所属組織が見つかりません' }, { status: 403 });
-  }
+  // ===== 1. 認可 (組織切替ヘッダ対応) =====
+  const r = await resolveCallerMembership(request);
+  if (r.error) return r.error;
+  const { membership: callerMembership } = r;
   if (callerMembership.role !== 'admin' && callerMembership.role !== 'manager') {
     return NextResponse.json({ error: '権限がありません' }, { status: 403 });
   }
@@ -101,7 +85,7 @@ export async function POST(
   if (staffErr || !staffRow) {
     return NextResponse.json({ error: '対象スタッフが見つかりません' }, { status: 404 });
   }
-  if (staffRow.organization_id !== callerMembership.organization_id) {
+  if (staffRow.organization_id !== callerMembership.organizationId) {
     // 別組織に向けて作成しようとしている。404 と等価扱い (情報露出を抑える)。
     return NextResponse.json({ error: '対象スタッフが見つかりません' }, { status: 404 });
   }
