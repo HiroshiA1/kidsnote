@@ -51,6 +51,12 @@ export interface Staff {
   archivedAt?: Date;
   /** 退職理由 (任意)。退職処理時に管理者が自由入力 */
   archiveReason?: string;
+  /**
+   * Phase 3-2: 連携した Google アカウントのメール。
+   * 連携状態の判定 = `googleEmail` が truthy。UI 表示用に email 自体を保持する。
+   * refresh_token は API には返さない (セキュリティ)。
+   */
+  googleEmail?: string;
 }
 
 /** staff データの取得状態。ログイン状態・Supabase 接続状況に応じて画面描画を分岐させるため Context に公開する */
@@ -127,6 +133,14 @@ interface AppContextType {
    * 失敗時は例外を throw。
    */
   restoreStaff: (staffId: string) => Promise<void>;
+  /**
+   * Phase 3-2: 自分自身の Google Calendar 連携を開始する (OAuth 画面へリダイレクト)。
+   * 成功時にこの Promise は resolve しない (リダイレクトのため)。
+   * 失敗時は例外を throw。
+   */
+  connectGoogleCalendar: () => Promise<void>;
+  /** Phase 3-2: 自分自身の Google Calendar 連携を解除 */
+  disconnectGoogleCalendar: () => Promise<void>;
   selectedChildId: string | null;
   setSelectedChildId: (id: string | null) => void;
   rules: Rule[];
@@ -567,6 +581,28 @@ export function AppLayout({ children }: { children: ReactNode }) {
     [refetchStaff],
   );
 
+  /** Phase 3-2: 自分の Google Calendar 連携 OAuth 画面へリダイレクト */
+  const connectGoogleCalendar = useCallback(async () => {
+    const res = await apiFetch('/api/google/calendar/connect', { method: 'POST' });
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(j.error ?? 'Google 連携の開始に失敗しました');
+    }
+    const { url } = (await res.json()) as { url: string };
+    if (!url) throw new Error('認可 URL が取得できませんでした');
+    window.location.href = url;
+  }, []);
+
+  /** Phase 3-2: 自分の Google 連携を解除 */
+  const disconnectGoogleCalendar = useCallback(async () => {
+    const res = await apiFetch('/api/google/calendar/disconnect', { method: 'POST' });
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(j.error ?? '連携解除に失敗しました');
+    }
+    await refetchStaff();
+  }, [refetchStaff]);
+
   /** PATCH /api/staff/[id] 経由で staff を更新し、成功で refetch する */
   const updateStaff = useCallback(
     async (staff: Staff) => {
@@ -701,6 +737,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         createStaffAccount,
         archiveStaff,
         restoreStaff,
+        connectGoogleCalendar,
+        disconnectGoogleCalendar,
         selectedChildId,
         setSelectedChildId,
         rules,

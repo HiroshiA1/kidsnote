@@ -16,6 +16,8 @@ export interface SupabaseStaffRow {
   /** Phase 2d: 退職日時 (在職中は null)。ISO 文字列で来る */
   archived_at?: string | null;
   archive_reason?: string | null;
+  /** Phase 3-2: 連携した Google アカウントのメール。refresh_token は API レスポンスに含めない */
+  google_email?: string | null;
 }
 
 /**
@@ -36,5 +38,6 @@ export function mapSupabaseStaff(row: SupabaseStaffRow): Staff {
     hasAccount: row.has_account === true,
     archivedAt: row.archived_at ? new Date(row.archived_at) : undefined,
     archiveReason: row.archive_reason ?? undefined,
+    googleEmail: row.google_email ?? undefined,
   };
 }

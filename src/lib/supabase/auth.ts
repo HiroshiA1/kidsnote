@@ -42,6 +42,22 @@ export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
 
+/**
+ * Google アカウントでログイン (Supabase Auth の Google OAuth)。
+ *
+ * - scope は email/profile のみ。Calendar スコープはここでは要求しない (連携用 OAuth は別フロー)。
+ * - リダイレクト先 `/auth/callback` で session 確立 → トップへ遷移。
+ */
+export async function signInWithGoogle() {
+  const supabase = createClient();
+  return supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    },
+  });
+}
+
 export async function signOut() {
   const supabase = createClient();
   return supabase.auth.signOut();

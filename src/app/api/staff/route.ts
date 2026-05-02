@@ -200,10 +200,13 @@ export async function GET(request: Request) {
   if (r.error) return r.error;
   const { membership: myMembership, supabase } = r;
 
-  // 自組織の staff のみ明示的に絞る (RLS でも守られるが、複数組織所属時の保険)
+  // 自組織の staff のみ明示的に絞る (RLS でも守られるが、複数組織所属時の保険)。
+  // google_refresh_token は機密のため select 列から意図的に除外する (UI には不要)。
   let query = supabase
     .from('staff')
-    .select('*')
+    .select(
+      'id, organization_id, first_name, last_name, role, class_assignment, email, phone, hire_date, qualifications, archived_at, archive_reason, google_email, created_at, updated_at',
+    )
     .eq('organization_id', myMembership.organizationId)
     .order('created_at', { ascending: true });
   if (archivedMode === 'active') {
